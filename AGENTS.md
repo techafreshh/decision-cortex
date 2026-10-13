@@ -129,7 +129,7 @@ docs/          submission README, schema reference, blog seed
 
 Create these dirs only when the phase that needs them starts; never invent new
 top-level dirs without updating this section. **The repo is a git repository**
-(origin: `github.com/techafreshh/track3-decision-cortex`, private until
+(origin: `github.com/techafreshh/decision-cortex`, private until
 submission) — agents work behind review + commit (never force-push, never
 rebase shared branches mid-event). **CI is deliberately not set up yet** — the
 owner has not green-lit it; do not add workflow files until asked (agreed
