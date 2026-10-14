@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "decision-cortex"
+version = "0.1.0"
+description = "Company brain over the rust-lang/rfcs corpus — claim-level-cited answers on FalkorDB"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx",
+    "pytest",
+    "ruff",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["api"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+markers = [
+    "integration: requires a running FalkorDB (deselected in offline CI)",
+    "live: requires the real OpenRouter API (deselected in offline CI)",
+]
+
+[tool.ruff]
+target-version = "py312"

@@ -125,6 +125,7 @@ web/           React + Vite SPA + CopilotKit components + shared kit
 verification/  30 gold + 10 no-record questions + eval runner
 infra/         docker-compose.yml, Caddyfile, .env.example, CI
 docs/          submission README, schema reference, blog seed
+scripts/       factory verification entrypoints (run_scenario_api.sh)
 ```
 
 Create these dirs only when the phase that needs them starts; never invent new
@@ -141,13 +142,16 @@ never on push/PR). Rules: automated CI makes **zero LLM calls**
 `live` marker and run only via `eval-run`); don't add new workflow files
 without owner sign-off.
 
-## Commands (pending scaffold — update this section when CI lands in Phase 0)
+## Commands
 
 ```bash
-# planned:
-docker compose up --build     # full local brain (falkordb + api + web)
-pytest api/ ingest/ verification/   # unit tests (CI: lint, unit, compose smoke)
-npm --prefix web run build    # UI static bundle
+pip install -e '.[dev]'       # install api package + lint/test tooling
+ruff check .                  # lint (CI: ci.yml python job)
+pytest -q -m 'not integration and not live'   # offline unit tests
+scripts/run_scenario_api.sh <scratch_dir> <port>  # boot + readiness-probe /healthz
+# planned, pending their phases:
+docker compose up --build     # full local brain (falkordb + api + web) — infra/ pending
+npm --prefix web run build    # UI static bundle — web/ pending
 # snapshot pull (Phase 0 only; needs vault GITHUB_TOKEN, rate-limit-safe)
 ```
 
