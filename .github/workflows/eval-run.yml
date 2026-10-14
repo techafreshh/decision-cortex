@@ -1,0 +1,43 @@
+# Owner-triggered real-eval run: the 30 gold + 10 no-record verification set
+# against the live OpenRouter stack. NEVER runs on push or PR. Budgeted per
+# the $10 doctrine: spend-capped key from repo secrets + hard timeout +
+# single-concurrency. Fire with: gh workflow run eval-run
+name: eval-run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-run
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    name: verification set (real LLM, spend-capped)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - name: Guard (runner not scaffolded yet)
+        run: |
+          if [ ! -d verification ]; then
+            echo '::notice::verification/ not scaffolded yet — nothing to eval'
+            exit 0
+          fi
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          pip install -e '.[dev]' || pip install -r requirements.txt || pip install pytest
+      - name: Run verification set
+        # SPEND_CAP_USD is a guard the runner must honor (AGENTS.md budget
+        # doctrine); the runner refuses to start without a key.
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SPEND_CAP_USD: '10'
+        run: pytest -q verification -m live --timeout=1200

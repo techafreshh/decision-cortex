@@ -1,0 +1,58 @@
+# Compose smoke — the judge's first experience, machine-checked.
+# Activates when W4 lands infra/ (docker-compose.yml + Caddyfile).
+# Deliberately does NOT trigger on its own workflow file (nothing to boot yet).
+name: compose-smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - 'snapshot/**'
+  pull_request:
+    paths:
+      - 'infra/**'
+      - 'snapshot/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: compose up -> healthz -> seeded graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      # TODO(W4): align host port + path with infra/Caddyfile when it lands.
+      SMOKE_URL: http://localhost:8080
+    steps:
+      - uses: actions/checkout@v7
+      - name: Guard (infra not scaffolded yet)
+        run: |
+          if [ ! -f infra/docker-compose.yml ]; then
+            echo '::notice::infra/ not scaffolded yet — nothing to smoke'
+            exit 0
+          fi
+      - name: Boot the stack
+        run: docker compose -f infra/docker-compose.yml up -d --build
+      - name: Wait for healthz + seeded graph
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS "${SMOKE_URL}/healthz" >/dev/null 2>&1; then
+              echo "healthz ok after attempt $i"
+              curl -fsS "${SMOKE_URL}/healthz"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "healthz never came up"
+          docker compose -f infra/docker-compose.yml logs --no-color
+          exit 1
+      - name: Cleanup
+        if: always()
+        run: docker compose -f infra/docker-compose.yml down -v --remove-orphans

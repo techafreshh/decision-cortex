@@ -131,10 +131,15 @@ Create these dirs only when the phase that needs them starts; never invent new
 top-level dirs without updating this section. **The repo is a git repository**
 (origin: `github.com/techafreshh/decision-cortex`, private until
 submission) — agents work behind review + commit (never force-push, never
-rebase shared branches mid-event). **CI is deliberately not set up yet** — the
-owner has not green-lit it; do not add workflow files until asked (agreed
-design to revisit: lint+unit, falkordb-integration, compose-smoke,
-owner-only eval-run).
+rebase shared branches mid-event). **CI** (green-lit by the owner): four
+workflows under `.github/workflows/` — `ci.yml` (ruff + offline pytest, web
+build), `falkordb-integration.yml` (real FalkorDB service container; activates
+with Phase-1 code), `compose-smoke.yml` (activates with `infra/`), and
+`eval-run.yml` (owner-dispatched only, spend-capped key from repo secrets,
+never on push/PR). Rules: automated CI makes **zero LLM calls**
+(`OPENROUTER_API_KEY` hard-emptied; tests needing the real API carry the
+`live` marker and run only via `eval-run`); don't add new workflow files
+without owner sign-off.
 
 ## Commands (pending scaffold — update this section when CI lands in Phase 0)
 
