@@ -9,7 +9,7 @@ Three newline-terminated JSONL files, one UTF-8 JSON object per line:
 
 | File | One record per | Key fields |
 |---|---|---|
-| `rfcs.jsonl` | pull request (RFC) | `rfc`, `title`, `status`, `proposed_on`, `decided_on`, `supersedes_rfc`, `author`, `url`, `labels`, `body`, `content` |
+| `rfcs.jsonl` | pull request (RFC) | `rfc`, `title`, `status`, `proposed_on`, `decided_on`, `supersedes_rfc`, `author`, `url`, `labels`, `body`, `content` (markdown, or `null`) |
 | `pr-comments.jsonl` | PR conversation comment | `pr_id`, `comment_id`, `author`, `ts`, `body`, `url`, `truncated` |
 | `commits.jsonl` | commit touching an RFC text file | `sha`, `rfc`, `ts`, `message`, `url` |
 
@@ -36,20 +36,26 @@ files in place; there is no separate build step.
 
 ## PAT scope
 
-The harvest only reads public repository data, so **no token scope is
-required** — an unauthenticated run works, just with a lower rate limit. The
-token used for the pinned run was a classic PAT carrying `public_repo` (read);
-the one provided for this run additionally carried `repo`, `workflow`, `gist`
-and `read:org`, none of which the fetcher uses. Use the narrowest scope you
-have that still reads a public repo (`public_repo`, or none).
+`GITHUB_TOKEN` (or `GH_TOKEN`) **must be set** — `python -m ingest.fetch_snapshot`
+exits with an error otherwise — but **no token scope is required**: the harvest
+only reads public repository data, so any token that can read `rust-lang/rfcs`
+works, including a classic PAT with no scopes. The token used for the pinned run
+was a classic PAT carrying `public_repo` (read); the one provided for this run
+additionally carried `repo`, `workflow`, `gist` and `read:org`, none of which
+the fetcher uses. Use the narrowest token that still reads the public repo.
 
 ## Methodology
 
 - **RFCs** are the repository's pull requests (`GET /pulls?state=all`).
   `status` is derived from the PR: merged → `merged`; open → `active`; closed
   without a merge → `rejected` (`PRD.md` §15.3 normalizes `merged`→`accepted`
-  and `active`→`proposed` downstream). `content` is the RFC markdown read from
-  the matching `text/NNNN-*.md` file for merged RFCs. `supersedes_rfc` is a
+  and `active`→`proposed` downstream). `content` is the RFC markdown the pull
+  request owns (`text/NNNN-*.md`); ownership is the file's leading number, and
+  for the one file whose number has no pull request it is resolved from the
+  pull request that introduced the file's earliest commit. A pull request that
+  owns several files (a rename leaves a redirect stub) takes the longest as its
+  RFC, and a pull request that owns no markdown carries `null` — so a genuine
+  absence is never confused with a harvest miss. `supersedes_rfc` is a
   best-effort link parsed from an explicit `supersedes #N` in the PR body or
   RFC text (rare in this corpus; the graph phase derives real supersede chains).
 - **PR comments** are the pull request conversation comments

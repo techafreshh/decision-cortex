@@ -8,7 +8,7 @@ LLM (``AGENTS.md`` prep-line rule).
 Record shape is pinned by :func:`validate_rfc`, :func:`validate_comment`, and
 :func:`validate_commit` and exercised by ``ingest/tests``.
 
-Idempotency: :func:`merge_jsonl` keys records by identity, renders the whole
+Idempotency: :func:`write_jsonl` keys records by identity, renders the whole
 file deterministically, and rewrites it only when the rendered content differs
 from what is already on disk — so re-running over an unchanged corpus is a
 content-hash no-op and never appends duplicate lines.
@@ -78,8 +78,15 @@ def supersedes_rfc(body: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def normalize_rfc(pull: dict[str, Any], *, content: str = "") -> dict[str, Any]:
-    """Map a raw pull request onto the ``rfcs.jsonl`` record shape."""
+def normalize_rfc(
+    pull: dict[str, Any], *, content: str | None = None
+) -> dict[str, Any]:
+    """Map a raw pull request onto the ``rfcs.jsonl`` record shape.
+
+    ``content`` is the RFC markdown when the pull request owns a ``text/*.md``
+    file, and ``None`` when it has none — ``None`` marks a genuine absence, so a
+    harvest miss is never confused with an RFC that has no markdown.
+    """
     return {
         "rfc": pull["number"],
         "title": pull.get("title") or "",
@@ -87,7 +94,7 @@ def normalize_rfc(pull: dict[str, Any], *, content: str = "") -> dict[str, Any]:
         "proposed_on": pull.get("created_at"),
         "decided_on": pull.get("merged_at") or pull.get("closed_at"),
         "supersedes_rfc": supersedes_rfc(
-            f"{pull.get('body') or ''}\n{content}"
+            f"{pull.get('body') or ''}\n{content or ''}"
         ),
         "author": (pull.get("user") or {}).get("login"),
         "url": pull.get("html_url"),
@@ -150,9 +157,14 @@ def render_jsonl(records: Iterable[dict[str, Any]]) -> str:
 
 
 def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
-    """Parse a JSONL file, ignoring blank lines."""
+    """Parse a JSONL file, ignoring blank lines.
+
+    JSONL is newline-delimited, so split on ``"\\n"`` — ``str.splitlines()``
+    would also break on U+0085/U+2028/U+2029, which :func:`render_jsonl` writes
+    literally, tearing a record apart on the next read.
+    """
     text = Path(path).read_text(encoding="utf-8")
-    return [json.loads(line) for line in text.splitlines() if line.strip()]
+    return [json.loads(line) for line in text.split("\n") if line.strip()]
 
 
 def write_jsonl(
@@ -173,18 +185,6 @@ def write_jsonl(
     return True
 
 
-def merge_jsonl(
-    path: str | Path, records: Iterable[dict[str, Any]], *, key: Key
-) -> bool:
-    """Merge records into an existing JSONL file by identity, last write wins."""
-    path = Path(path)
-    existing = read_jsonl(path) if path.exists() else []
-    combined: dict[Any, dict[str, Any]] = {key(record): record for record in existing}
-    for record in records:
-        combined[key(record)] = record
-    return write_jsonl(path, combined.values(), key=key)
-
-
 def _dedupe_sorted(
     records: Iterable[dict[str, Any]], key: Key
 ) -> list[dict[str, Any]]:
@@ -203,8 +203,8 @@ def validate_rfc(record: dict[str, Any]) -> None:
         raise ValueError(f"unknown status: {record['status']!r}")
     if not isinstance(record["labels"], list):
         raise TypeError("labels must be a list")
-    if not isinstance(record["content"], str):
-        raise TypeError("content must be a string")
+    if record["content"] is not None and not isinstance(record["content"], str):
+        raise TypeError("content must be a string or null")
 
 
 def validate_comment(record: dict[str, Any]) -> None:

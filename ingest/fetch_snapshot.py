@@ -154,18 +154,21 @@ def fetch(repo: str, out_dir: Path, cache_dir: Path, token: str) -> None:
     pull_numbers = {pull["number"] for pull in pulls}
 
     text_paths = _rfc_text_paths(client, repo)
+    paths_by_pull = _resolve_rfc_owners(client, repo, text_paths, pull_numbers)
 
     rfcs = [
         pipeline.normalize_rfc(
-            pull, content=_rfc_content(client, repo, text_paths.get(pull["number"]))
+            pull, content=_rfc_content(client, repo, paths_by_pull.get(pull["number"], []))
         )
         for pull in pulls
     ]
     print(
-        f"rfcs: {len(rfcs)} (text bodies: {len(text_paths)})",
+        f"rfcs: {len(rfcs)} (markdown owners: {len(paths_by_pull)})",
         file=sys.stderr,
     )
-    pipeline.merge_jsonl(out_dir / "rfcs.jsonl", rfcs, key=lambda record: record["rfc"])
+    pipeline.write_jsonl(
+        out_dir / "rfcs.jsonl", rfcs, key=lambda record: record["rfc"]
+    )
 
     comments_by_pr: dict[int, list[dict[str, Any]]] = {}
     for comment in client.paginate(
@@ -186,28 +189,35 @@ def fetch(repo: str, out_dir: Path, cache_dir: Path, token: str) -> None:
             for comment in kept
         )
     print(f"pr-comments: {len(comments)}", file=sys.stderr)
-    pipeline.merge_jsonl(
+    pipeline.write_jsonl(
         out_dir / "pr-comments.jsonl",
         comments,
         key=lambda record: record["comment_id"],
     )
 
     commits = []
-    for number, path in sorted(text_paths.items()):
-        for commit in client.paginate(f"/repos/{repo}/commits", params={"path": path}):
-            commits.append(pipeline.normalize_commit(commit, rfc=number))
+    for number, paths in sorted(paths_by_pull.items()):
+        for path in paths:
+            for commit in client.paginate(
+                f"/repos/{repo}/commits", params={"path": path}
+            ):
+                commits.append(pipeline.normalize_commit(commit, rfc=number))
     print(f"commits: {len(commits)}", file=sys.stderr)
-    pipeline.merge_jsonl(
+    pipeline.write_jsonl(
         out_dir / "commits.jsonl",
         commits,
         key=lambda record: (record["rfc"], record["sha"]),
     )
 
 
-def _rfc_text_paths(client: GitHubClient, repo: str) -> dict[int, str]:
-    """Map RFC number -> ``text/NNNN-*.md`` path from the repository tree."""
+def _rfc_text_paths(client: GitHubClient, repo: str) -> dict[int, list[str]]:
+    """Map RFC number -> sorted ``text/NNNN-*.md`` paths from the repository tree.
+
+    One-to-many: a number can carry more than one file (e.g. a renamed RFC kept
+    its old filename as a redirect stub), so a collision must not overwrite.
+    """
     tree = client.get(f"{API_ROOT}/repos/{repo}/git/trees/main?recursive=1")
-    paths: dict[int, str] = {}
+    paths: dict[int, list[str]] = {}
     for entry in tree.get("tree", []):
         path = entry.get("path", "")
         if entry.get("type") != "blob" or not path.startswith("text/"):
@@ -216,15 +226,65 @@ def _rfc_text_paths(client: GitHubClient, repo: str) -> dict[int, str]:
             continue
         number = _leading_number(Path(path).name)
         if number is not None:
-            paths[number] = path
+            paths.setdefault(number, []).append(path)
+    for group in paths.values():
+        group.sort()
     return paths
 
 
-def _rfc_content(client: GitHubClient, repo: str, path: str | None) -> str:
-    if path is None:
-        return ""
-    payload = client.get(f"{API_ROOT}/repos/{repo}/contents/{path}")
-    return base64.b64decode(payload["content"]).decode("utf-8")
+def _resolve_rfc_owners(
+    client: GitHubClient,
+    repo: str,
+    text_paths: dict[int, list[str]],
+    pull_numbers: set[int],
+) -> dict[int, list[str]]:
+    """Map each owning pull request to the RFC text files it owns.
+
+    A file's leading number is the owning pull request for the whole corpus but
+    one: ``text/3673-rustdoc-types-maintainers.md`` was merged via a separate
+    pull request (3705), so no PR 3673 exists. For such a file, resolve the
+    owner from the pull request that introduced its earliest commit.
+    """
+    owners: dict[int, list[str]] = {}
+    for number, paths in text_paths.items():
+        owner = number
+        if number not in pull_numbers:
+            owner = _owning_pull(client, repo, paths)
+            if owner is None:
+                continue
+        owners.setdefault(owner, []).extend(paths)
+    return owners
+
+
+def _owning_pull(client: GitHubClient, repo: str, paths: list[str]) -> int | None:
+    """The merged pull request that introduced the earliest of ``paths``."""
+    for path in paths:
+        commits = list(
+            client.paginate(f"/repos/{repo}/commits", params={"path": path})
+        )
+        for commit in reversed(commits):
+            pulls = client.get(
+                f"{API_ROOT}/repos/{repo}/commits/{commit['sha']}/pulls"
+            )
+            for pull in pulls:
+                if pull.get("merged_at"):
+                    return pull["number"]
+    return None
+
+
+def _rfc_content(client: GitHubClient, repo: str, paths: list[str]) -> str | None:
+    """The RFC markdown for a pull request, or ``None`` when it owns no file.
+
+    A pull request can own several files; the longest is the RFC itself, while
+    the others are redirect stubs or translations.
+    """
+    contents = [
+        base64.b64decode(
+            client.get(f"{API_ROOT}/repos/{repo}/contents/{path}")["content"]
+        ).decode("utf-8")
+        for path in paths
+    ]
+    return max(contents, key=len) if contents else None
 
 
 def _next_link(link_header: str | None) -> str | None:
