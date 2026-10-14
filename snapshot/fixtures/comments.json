@@ -1,0 +1,18 @@
+[
+  {
+    "id": 5001,
+    "issue_url": "https://api.github.com/repos/rust-lang/rfcs/issues/100",
+    "user": {"login": "alice"},
+    "created_at": "2014-06-15T10:00:00Z",
+    "body": "I think this is ready for FCP.",
+    "html_url": "https://github.com/rust-lang/rfcs/pull/100#issuecomment-5001"
+  },
+  {
+    "id": 5002,
+    "issue_url": "https://api.github.com/repos/rust-lang/rfcs/issues/100",
+    "user": {"login": "bob"},
+    "created_at": "2014-06-15T11:30:00Z",
+    "body": "One concern about naming.",
+    "html_url": "https://github.com/rust-lang/rfcs/pull/100#issuecomment-5002"
+  }
+]

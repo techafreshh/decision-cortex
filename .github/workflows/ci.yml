@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - 'ingest/**'
+      - 'snapshot/**'
       - 'api/**'
       - 'verification/**'
       - 'web/**'
@@ -19,6 +20,7 @@ on:
   pull_request:
     paths:
       - 'ingest/**'
+      - 'snapshot/**'
       - 'api/**'
       - 'verification/**'
       - 'web/**'
