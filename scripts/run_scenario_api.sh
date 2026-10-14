@@ -26,6 +26,14 @@ READY_TIMEOUT_SECS=120
 
 mkdir -p "$SCRATCH_DIR"
 
+# Refuse to report readiness for a listener this invocation did not start: if
+# the port already answers /healthz, a foreign process owns it and the uvicorn
+# launched below would die on bind (Errno 98) while the probe still saw that 200.
+if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1; then
+    echo "refusing to start: port ${PORT} already serves /healthz before launch" >&2
+    exit 1
+fi
+
 if command -v uv >/dev/null 2>&1; then
     uv venv "$VENV"
     uv pip install --python "$VENV/bin/python" -e "$REPO_ROOT"
@@ -38,12 +46,18 @@ fi
 cd "$REPO_ROOT"
 nohup "$VENV/bin/uvicorn" api.main:app --host 127.0.0.1 --port "$PORT" \
     >"$LOGFILE" 2>&1 &
-echo "$!" >"$PIDFILE"
+API_PID=$!
+echo "$API_PID" >"$PIDFILE"
 
 deadline=$((SECONDS + READY_TIMEOUT_SECS))
 while [ "$SECONDS" -lt "$deadline" ]; do
+    if ! kill -0 "$API_PID" 2>/dev/null; then
+        echo "uvicorn (pid $API_PID) exited before /healthz answered on port ${PORT}" >&2
+        tail -n 5 "$LOGFILE" >&2
+        exit 1
+    fi
     if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1; then
-        echo "healthz ok on port ${PORT} (pid $(cat "$PIDFILE"))"
+        echo "healthz ok on port ${PORT} (pid $API_PID)"
         exit 0
     fi
     sleep 1

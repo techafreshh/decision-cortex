@@ -211,7 +211,8 @@ track3-decision-cortex/
 ├── web/                     # React + Vite SPA + CopilotKit components + shared kit
 ├── verification/            # 30 gold + 10 no-record questions + eval runner
 ├── infra/                   # docker-compose.yml, Caddyfile, .env.example, CI
-└── docs/                    # submission README, schema reference, blog seed
+├── docs/                    # submission README, schema reference, blog seed
+└── scripts/                 # factory verification entrypoints (run_scenario_api.sh)
 ```
 
 ---
