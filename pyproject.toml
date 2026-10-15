@@ -9,12 +9,13 @@ description = "Company brain over the rust-lang/rfcs corpus — claim-level-cite
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",
+    "httpx",
+    "pydantic>=2",
     "uvicorn",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "httpx",
     "pytest",
     "ruff",
 ]
