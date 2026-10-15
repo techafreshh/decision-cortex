@@ -18,6 +18,14 @@ enrichment: Phase 1 maps explicit records through the ``concepts``/``stances``
 seam; deriving them over the real corpus is Phase 2/3 work behind the same
 :data:`SCHEMA`.
 
+The retrieval indexes are derived, out-of-band data: the loader creates the
+full-text index on ``Decision.title`` and — when a committed
+``decision-embeddings.jsonl`` is present — stamps each Decision with a
+``vecf32`` embedding and creates the vector index. Embeddings are written by
+raw Cypher, never through a ``Payload`` node, so they are not canonical record
+properties and ``validate_payload`` still rejects an ``embedding`` property in a
+payload.
+
 The parser contract is the reason ``contents`` is a separate argument:
 :func:`ingest.parsers.parse_decision` intentionally drops the RFC markdown
 (only the ``DocVersion`` content hash needs it), so the caller passes the raw
@@ -41,6 +49,9 @@ from ingest import ontology, parsers, snapshot_pipeline
 #: exist in the snapshot, so the label is the only derivation source).
 _TEAM_PREFIX = "T-"
 _AREA_PREFIX = "A-"
+
+#: Vectors written per ``vecf32`` Cypher statement; bounds the request size.
+_EMBEDDING_BATCH = 256
 
 
 @dataclass(frozen=True)
@@ -77,6 +88,7 @@ class LoadResult:
     node_count: int
     edge_count: int
     graph_name: str
+    embedded_count: int = 0
 
 
 def decision_id(rfc: int) -> str:
@@ -290,23 +302,35 @@ def payload_from_snapshot(snapshot_dir: str | Path) -> Payload:
 
 
 async def load_payload(
-    payload: Payload, *, host: str, port: int, graph_name: str
+    payload: Payload,
+    *,
+    host: str,
+    port: int,
+    graph_name: str,
+    embeddings: Mapping[int, list[float]] | None = None,
 ) -> LoadResult:
     """Upsert ``payload`` into FalkorDB via GraphRAG-SDK's ``GraphStore``.
 
     Nodes are written before relationships so every edge can match its
     endpoints. Re-running an unchanged payload only re-``MERGE``s, leaving the
-    node and edge counts unchanged.
+    node and edge counts unchanged. When ``embeddings`` is given, the full-text
+    and vector indexes are created first (a full-text index only picks up nodes
+    written after it), the Decisions are stamped with their ``vecf32`` vectors,
+    and ``embedded_count`` reports how many were written.
     """
     from graphrag_sdk import ConnectionConfig, FalkorDBConnection, GraphStore
     from graphrag_sdk.core.models import GraphNode, GraphRelationship
 
+    dimension = _embedding_dimension(embeddings)
+    if embeddings:
+        _validate_embedding_targets(payload, embeddings)
     connection = FalkorDBConnection(
         ConnectionConfig(host=host, port=port, graph_name=graph_name)
     )
     store = GraphStore(connection)
     try:
         await _ensure_id_indexes(store)
+        await _ensure_retrieval_indexes(store, dimension)
         nodes = [
             GraphNode(id=node.id, label=node.label, properties=dict(node.properties))
             for node in payload.nodes
@@ -322,6 +346,9 @@ async def load_payload(
         ]
         node_count = await store.upsert_nodes(nodes)
         edge_count = await store.upsert_relationships(relationships)
+        embedded_count = 0
+        if embeddings:
+            embedded_count = await _write_decision_embeddings(store, embeddings)
     finally:
         await connection.close()
     # ``upsert_nodes`` raises on a per-item failure, but ``upsert_relationships``
@@ -337,7 +364,12 @@ async def load_payload(
         raise RuntimeError(
             f"edge load shortfall: attempted {len(payload.edges)}, wrote {edge_count}"
         )
-    return LoadResult(node_count=node_count, edge_count=edge_count, graph_name=graph_name)
+    return LoadResult(
+        node_count=node_count,
+        edge_count=edge_count,
+        graph_name=graph_name,
+        embedded_count=embedded_count,
+    )
 
 
 async def ingest_snapshot(
@@ -346,7 +378,13 @@ async def ingest_snapshot(
     """Build, validate, and load the snapshot at ``snapshot_dir``."""
     payload = payload_from_snapshot(snapshot_dir)
     validate_payload(payload)
-    return await load_payload(payload, host=host, port=port, graph_name=graph_name)
+    return await load_payload(
+        payload,
+        host=host,
+        port=port,
+        graph_name=graph_name,
+        embeddings=_read_embeddings_if_present(snapshot_dir),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -373,7 +411,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(
         f"loaded graph '{result.graph_name}': "
-        f"{result.node_count} nodes, {result.edge_count} edges"
+        f"{result.node_count} nodes, {result.edge_count} edges, "
+        f"{result.embedded_count} embeddings"
     )
     return 0
 
@@ -482,11 +521,84 @@ async def _ensure_id_indexes(store: Any) -> None:
     swallowed.
     """
     for label in _id_index_labels():
-        try:
-            await store.query_raw(f"CREATE INDEX FOR (n:{label}) ON (n.id)")
-        except Exception as exc:
-            if "already indexed" not in str(exc).lower():
-                raise
+        await _create_index(store, f"CREATE INDEX FOR (n:{label}) ON (n.id)")
+
+
+async def _ensure_retrieval_indexes(store: Any, dimension: int | None) -> None:
+    """Create the retrieval indexes the query path reads.
+
+    The full-text index is over ``Decision.title`` (the property the graph
+    stores and the full-text seed queries). It is created before nodes are
+    written because FalkorDB only indexes entities present when the index is
+    created or written afterwards. The vector index is created only when there
+    are embeddings to search, and its dimension must match them.
+    """
+    await _create_index(store, "CALL db.idx.fulltext.createNodeIndex('Decision','title')")
+    if dimension is not None:
+        await _create_index(
+            store,
+            "CREATE VECTOR INDEX FOR (n:Decision) ON (n.embedding) "
+            f"OPTIONS {{dimension:{dimension}, similarityFunction:'cosine'}}",
+        )
+
+
+async def _create_index(store: Any, cypher: str) -> None:
+    """Run a ``CREATE ... INDEX`` statement, swallowing an existing index."""
+    try:
+        await store.query_raw(cypher)
+    except Exception as exc:
+        if "already indexed" not in str(exc).lower():
+            raise
+
+
+def _read_embeddings_if_present(snapshot_dir: str | Path) -> dict[int, list[float]] | None:
+    """Read the committed decision embeddings, or ``None`` when absent."""
+    from ingest.embeddings import EMBEDDINGS_FILENAME, read_decision_embeddings
+
+    path = Path(snapshot_dir) / EMBEDDINGS_FILENAME
+    return read_decision_embeddings(path) if path.exists() else None
+
+
+def _embedding_dimension(embeddings: Mapping[int, list[float]] | None) -> int | None:
+    """The single vector length across ``embeddings``; ``None`` when absent."""
+    if not embeddings:
+        return None
+    dimensions = {len(vector) for vector in embeddings.values()}
+    if len(dimensions) != 1 or 0 in dimensions:
+        raise ValueError(f"embeddings must share one non-zero dimension, got {sorted(dimensions)}")
+    return dimensions.pop()
+
+
+def _validate_embedding_targets(
+    payload: Payload, embeddings: Mapping[int, list[float]]
+) -> None:
+    """Reject embeddings whose RFC is not a Decision in this payload.
+
+    Without this check the ``MATCH``-based write would silently drop vectors
+    for an unknown RFC, leaving the vector index quietly incomplete.
+    """
+    decision_ids = {node.id for node in payload.nodes if node.label == "Decision"}
+    missing = sorted(rfc for rfc in embeddings if decision_id(rfc) not in decision_ids)
+    if missing:
+        raise ValueError(f"embeddings reference RFCs not in the payload: {missing[:5]}")
+
+
+async def _write_decision_embeddings(
+    store: Any, embeddings: Mapping[int, list[float]]
+) -> int:
+    """Stamp ``vecf32`` embeddings onto the matching Decision nodes."""
+    items = [
+        {"id": decision_id(rfc), "vector": list(vector)}
+        for rfc, vector in sorted(embeddings.items())
+    ]
+    for start in range(0, len(items), _EMBEDDING_BATCH):
+        await store.query_raw(
+            "UNWIND $batch AS item "
+            "MATCH (d:Decision {id: item.id}) "
+            "SET d.embedding = vecf32(item.vector)",
+            {"batch": items[start : start + _EMBEDDING_BATCH]},
+        )
+    return len(items)
 
 
 if __name__ == "__main__":

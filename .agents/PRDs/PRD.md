@@ -497,6 +497,13 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 ```
 Corpus RFC statuses (`active | merged | accepted | rejected | replaced | closed`) normalize onto schema status; `merged` maps to `accepted` (shipped as merged FCP), `active` to `proposed`.
 
+**Retrieval indexes (derived, out-of-band).** The query-side retrieval (PRD §6.2, §7.1 `retrieve_evidence`) needs indexes that are derived index data, not canonical payload properties, so they are created by the loader and never written through a `Payload` node:
+
+- a **vector index** on `Decision.embedding`, where `embedding` is a `vecf32` stamped from the committed `snapshot/decision-embeddings.jsonl` (produced once by `ingest.embeddings` with the same OpenRouter embedding slug/dimension used for query embeddings);
+- a **full-text index** on `Decision.title` (the only node property the full-text seed queries; the graph stores no Message body or RFC content — only refs — so there is nothing else to index).
+
+`embedding` is deliberately **not** added to the `Decision` property list above: `validate_payload` still rejects it inside a payload, because a plain float array stored through `upsert_nodes` would not be a `vecf32` and would break the vector index. Model slug and dimension must match between document and query embeddings.
+
 **Reference Cypher flavors:**
 ```cypher
 // decisions + who objected:

@@ -266,7 +266,11 @@ def test_ensure_id_indexes_propagates_other_errors() -> None:
 
 
 def _stub_sdk(
-    monkeypatch: pytest.MonkeyPatch, *, node_count: int, edge_count: int
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    node_count: int,
+    edge_count: int,
+    calls: list[tuple[str, Any]] | None = None,
 ) -> None:
     """Replace the SDK IO surface ``load_payload`` imports at call time."""
 
@@ -284,8 +288,9 @@ def _stub_sdk(
         def __init__(self, connection: Any) -> None:
             self.connection = connection
 
-        async def query_raw(self, cypher: str) -> None:
-            return None
+        async def query_raw(self, cypher: str, params: Any = None) -> None:
+            if calls is not None:
+                calls.append((cypher, params))
 
         async def upsert_nodes(self, nodes: list[Any]) -> int:
             return node_count
@@ -320,4 +325,85 @@ def test_load_payload_raises_on_edge_shortfall(monkeypatch: pytest.MonkeyPatch) 
     with pytest.raises(RuntimeError, match="edge load shortfall"):
         asyncio.run(
             graph.load_payload(payload, host="h", port=1, graph_name="g")
+        )
+
+
+def test_load_payload_writes_embeddings_and_retrieval_indexes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = graph.build_payload([_decision(1), _decision(2)], [], [])
+    calls: list[tuple[str, Any]] = []
+    _stub_sdk(monkeypatch, node_count=len(payload.nodes), edge_count=len(payload.edges), calls=calls)
+
+    result = asyncio.run(
+        graph.load_payload(
+            payload,
+            host="h",
+            port=1,
+            graph_name="g",
+            embeddings={1: [0.1, 0.2, 0.3], 2: [0.4, 0.5, 0.6]},
+        )
+    )
+
+    assert result.embedded_count == 2
+    statements = [cypher for cypher, _ in calls]
+    assert "CALL db.idx.fulltext.createNodeIndex('Decision','title')" in statements
+    assert any(
+        "CREATE VECTOR INDEX" in cypher and "dimension:3" in cypher for cypher in statements
+    )
+    embedding_writes = [
+        params
+        for cypher, params in calls
+        if "SET d.embedding = vecf32(item.vector)" in cypher
+    ]
+    assert len(embedding_writes) == 1
+    assert embedding_writes[0]["batch"] == [
+        {"id": "rfc:1", "vector": [0.1, 0.2, 0.3]},
+        {"id": "rfc:2", "vector": [0.4, 0.5, 0.6]},
+    ]
+
+
+def test_load_payload_without_embeddings_creates_no_vector_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _two_node_payload()
+    calls: list[tuple[str, Any]] = []
+    _stub_sdk(monkeypatch, node_count=len(payload.nodes), edge_count=len(payload.edges), calls=calls)
+
+    result = asyncio.run(graph.load_payload(payload, host="h", port=1, graph_name="g"))
+
+    assert result.embedded_count == 0
+    assert not any("VECTOR INDEX" in cypher for cypher, _ in calls)
+    assert not any("vecf32" in cypher for cypher, _ in calls)
+
+
+def test_load_payload_rejects_embedding_for_unknown_rfc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _two_node_payload()
+    _stub_sdk(monkeypatch, node_count=len(payload.nodes), edge_count=0)
+
+    with pytest.raises(ValueError, match="not in the payload"):
+        asyncio.run(
+            graph.load_payload(
+                payload, host="h", port=1, graph_name="g", embeddings={999: [0.1, 0.2]}
+            )
+        )
+
+
+def test_load_payload_rejects_mixed_embedding_dimensions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = graph.build_payload([_decision(1), _decision(2)], [], [])
+    _stub_sdk(monkeypatch, node_count=len(payload.nodes), edge_count=0)
+
+    with pytest.raises(ValueError, match="one non-zero dimension"):
+        asyncio.run(
+            graph.load_payload(
+                payload,
+                host="h",
+                port=1,
+                graph_name="g",
+                embeddings={1: [0.1, 0.2], 2: [0.3]},
+            )
         )
