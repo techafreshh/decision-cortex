@@ -8,6 +8,7 @@ tests instead.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from pathlib import Path
 from typing import Any
@@ -221,3 +222,102 @@ def test_committed_corpus_builds_expected_counts() -> None:
         "AREA": 1_609,
         "SUPERSEDES": 3,
     }
+
+
+def test_validate_payload_rejects_undeclared_property() -> None:
+    payload = graph.Payload(
+        nodes=(graph.Node("rfc:1", "Decision", {"rfc": 1, "url": "x"}),),
+        edges=(),
+    )
+
+    with pytest.raises(ValueError, match="undeclared properties"):
+        graph.validate_payload(payload)
+
+
+class _StubStore:
+    """Minimal ``GraphStore`` stand-in for the index-creation path."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.calls: list[str] = []
+
+    async def query_raw(self, cypher: str) -> None:
+        self.calls.append(cypher)
+        if self.error is not None:
+            raise self.error
+
+
+def test_ensure_id_indexes_tolerates_already_indexed() -> None:
+    store = _StubStore(RuntimeError("Attribute 'id' is already indexed"))
+
+    asyncio.run(graph._ensure_id_indexes(store))
+
+    assert store.calls == [
+        f"CREATE INDEX FOR (n:{label}) ON (n.id)"
+        for label in graph._id_index_labels()
+    ]
+
+
+def test_ensure_id_indexes_propagates_other_errors() -> None:
+    store = _StubStore(RuntimeError("connection reset"))
+
+    with pytest.raises(RuntimeError, match="connection reset"):
+        asyncio.run(graph._ensure_id_indexes(store))
+
+
+def _stub_sdk(
+    monkeypatch: pytest.MonkeyPatch, *, node_count: int, edge_count: int
+) -> None:
+    """Replace the SDK IO surface ``load_payload`` imports at call time."""
+
+    import graphrag_sdk
+    import graphrag_sdk.core.models as sdk_models
+
+    class _FakeConnection:
+        def __init__(self, config: Any) -> None:
+            self.config = config
+
+        async def close(self) -> None:
+            return None
+
+    class _FakeStore:
+        def __init__(self, connection: Any) -> None:
+            self.connection = connection
+
+        async def query_raw(self, cypher: str) -> None:
+            return None
+
+        async def upsert_nodes(self, nodes: list[Any]) -> int:
+            return node_count
+
+        async def upsert_relationships(self, relationships: list[Any]) -> int:
+            return edge_count
+
+    monkeypatch.setattr(graphrag_sdk, "FalkorDBConnection", _FakeConnection)
+    monkeypatch.setattr(graphrag_sdk, "GraphStore", _FakeStore)
+    monkeypatch.setattr(sdk_models, "GraphNode", lambda **kwargs: kwargs)
+    monkeypatch.setattr(sdk_models, "GraphRelationship", lambda **kwargs: kwargs)
+
+
+def _two_node_payload() -> graph.Payload:
+    return graph.build_payload([_decision(1)], [], [])
+
+
+def test_load_payload_raises_on_node_shortfall(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _two_node_payload()
+    _stub_sdk(monkeypatch, node_count=0, edge_count=0)
+
+    with pytest.raises(RuntimeError, match="node load shortfall"):
+        asyncio.run(
+            graph.load_payload(payload, host="h", port=1, graph_name="g")
+        )
+
+
+def test_load_payload_raises_on_edge_shortfall(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _two_node_payload()
+    _stub_sdk(monkeypatch, node_count=len(payload.nodes), edge_count=0)
+
+    with pytest.raises(RuntimeError, match="edge load shortfall"):
+        asyncio.run(
+            graph.load_payload(payload, host="h", port=1, graph_name="g")
+        )

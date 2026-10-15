@@ -230,18 +230,27 @@ def build_payload(
 def validate_payload(payload: Payload) -> None:
     """Assert ``payload`` conforms to the canonical §15.3 ontology.
 
-    Every node label and edge type must be declared in
-    :data:`ingest.ontology.SCHEMA`; every edge must connect the exact
-    ``(source_label, target_label)`` pattern its relation declares; every edge
-    endpoint must exist. Raises :class:`ValueError` on the first violation.
+    Every node label and property key must be declared in
+    :data:`ingest.ontology.SCHEMA`; every edge type must be declared there and
+    connect the exact ``(source_label, target_label)`` pattern its relation
+    declares; every edge endpoint must exist. Raises :class:`ValueError` on the
+    first violation.
     """
-    entity_labels = {entity.label for entity in ontology.SCHEMA.entities}
+    properties_by_label = {
+        entity.label: {prop.name for prop in entity.properties}
+        for entity in ontology.SCHEMA.entities
+    }
     patterns = {relation.label: set(relation.patterns) for relation in ontology.SCHEMA.relations}
 
     labels_by_id: dict[str, str] = {}
     for node in payload.nodes:
-        if node.label not in entity_labels:
+        if node.label not in properties_by_label:
             raise ValueError(f"unknown entity label: {node.label!r}")
+        undeclared = set(node.properties) - properties_by_label[node.label]
+        if undeclared:
+            raise ValueError(
+                f"{node.label} node has undeclared properties: {sorted(undeclared)}"
+            )
         labels_by_id[node.id] = node.label
 
     for edge in payload.edges:
@@ -315,6 +324,19 @@ async def load_payload(
         edge_count = await store.upsert_relationships(relationships)
     finally:
         await connection.close()
+    # ``upsert_nodes`` raises on a per-item failure, but ``upsert_relationships``
+    # swallows both its batch and per-item failures and returns a count that may
+    # be short — including 0 when the query timeout trips its circuit breaker.
+    # On success the SDK returns exactly the attempted count, so a shortfall is
+    # always a swallowed write failure and must not be reported as a clean load.
+    if node_count != len(payload.nodes):
+        raise RuntimeError(
+            f"node load shortfall: attempted {len(payload.nodes)}, wrote {node_count}"
+        )
+    if edge_count != len(payload.edges):
+        raise RuntimeError(
+            f"edge load shortfall: attempted {len(payload.edges)}, wrote {edge_count}"
+        )
     return LoadResult(node_count=node_count, edge_count=edge_count, graph_name=graph_name)
 
 
@@ -368,7 +390,6 @@ def _decision_node(decision: dict[str, Any]) -> Node:
             "decided_on": decision["decided_on"],
             "supersedes_rfc": decision["supersedes_rfc"],
             "madr_link": decision["madr_link"],
-            "url": decision["url"],
         },
     )
 
@@ -383,6 +404,7 @@ def _message_node(message: dict[str, Any]) -> Node:
             "author": message["author"],
             "ts": message["ts"],
             "text_ref": message["text_ref"],
+            "stance_hint": message["stance_hint"],
             "truncated": message["truncated"],
         },
     )
