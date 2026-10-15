@@ -35,9 +35,7 @@ jobs:
     timeout-minutes: 15
     services:
       falkordb:
-        # TODO(W1, Phase 1): pin an exact 6.x tag once we know the
-        # docker-hub tags at build time; `latest` keeps this bootable now.
-        image: falkordb/falkordb:latest
+        image: falkordb/falkordb:6.0.2
         ports:
           - 6379:6379
     env:

@@ -81,9 +81,11 @@ their content is fully consolidated into the PRD and this file.)
 
 ## Ingestion & graph integrity (correctness rules)
 
-- **Every ingestion write is idempotent** (content-hash no-op via GraphRAG-SDK
-  `apply_changes`). Multiple agents may write concurrently — never assume you
-  are the only writer; never "fix" duplication by deleting nodes manually.
+- **Every ingestion write is idempotent** (re-`MERGE`-on-`id` no-op; the
+  GraphRAG-SDK `apply_changes` file-content-hash path is *not* used — see
+  `docs/graph-schema-notes.md`). Multiple agents may write concurrently — never
+  assume you are the only writer; never "fix" duplication by deleting nodes
+  manually.
 - **Provenance honesty:** every message kept in the graph keeps its
   `truncated: bool` flag; PR-comment harvest stays capped at ~100 per PR; never
   quietly drop truncation to make an answer look complete.
