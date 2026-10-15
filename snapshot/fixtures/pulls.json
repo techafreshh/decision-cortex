@@ -1,0 +1,38 @@
+[
+  {
+    "number": 100,
+    "title": "RFC: Add a `partial_cmp` method to `PartialOrd`",
+    "state": "closed",
+    "merged_at": "2014-06-17T22:57:09Z",
+    "created_at": "2014-06-15T09:12:00Z",
+    "closed_at": "2014-06-17T22:57:09Z",
+    "body": "Adds `partial_cmp` to `PartialOrd`. Supersedes #42.",
+    "user": {"login": "alice"},
+    "html_url": "https://github.com/rust-lang/rfcs/pull/100",
+    "labels": [{"name": "T-libs"}, {"name": "final-comment-period"}]
+  },
+  {
+    "number": 9999,
+    "title": "RFC: An active proposal",
+    "state": "open",
+    "merged_at": null,
+    "created_at": "2026-09-01T10:00:00Z",
+    "closed_at": null,
+    "body": "Still under discussion.",
+    "user": {"login": "carol"},
+    "html_url": "https://github.com/rust-lang/rfcs/pull/9999",
+    "labels": [{"name": "T-lang"}]
+  },
+  {
+    "number": 3,
+    "title": "RFC: Rearchitect the attribute-usage lint",
+    "state": "closed",
+    "merged_at": null,
+    "created_at": "2014-03-11T18:00:00Z",
+    "closed_at": "2014-04-01T12:30:00Z",
+    "body": "Closed without consensus.",
+    "user": {"login": "bob"},
+    "html_url": "https://github.com/rust-lang/rfcs/pull/3",
+    "labels": []
+  }
+]
