@@ -9,8 +9,9 @@ LLM, so they run in offline CI.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
+
+from ingest.snapshot_pipeline import read_jsonl
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 QUESTIONS = REPO_ROOT / "verification" / "questions.jsonl"
@@ -20,13 +21,8 @@ GOLD = "gold"
 NO_RECORD = "no_record"
 
 
-def _read_jsonl(path: Path) -> list[dict]:
-    text = path.read_text(encoding="utf-8")
-    return [json.loads(line) for line in text.split("\n") if line.strip()]
-
-
 def _questions() -> list[dict]:
-    return _read_jsonl(QUESTIONS)
+    return read_jsonl(QUESTIONS)
 
 
 def test_set_has_exactly_forty_well_formed_entries() -> None:
@@ -44,13 +40,13 @@ def test_set_has_thirty_gold_and_ten_no_record() -> None:
 
 
 def test_gold_entries_cite_a_source_from_their_own_rfc() -> None:
-    rfcs = {record["rfc"] for record in _read_jsonl(SNAPSHOT / "rfcs.jsonl")}
+    rfcs = {record["rfc"] for record in read_jsonl(SNAPSHOT / "rfcs.jsonl")}
     citation_rfc = {
         record["url"]: record["pr_id"]
-        for record in _read_jsonl(SNAPSHOT / "pr-comments.jsonl")
+        for record in read_jsonl(SNAPSHOT / "pr-comments.jsonl")
     }
     citation_rfc.update(
-        {record["url"]: record["rfc"] for record in _read_jsonl(SNAPSHOT / "commits.jsonl")}
+        {record["url"]: record["rfc"] for record in read_jsonl(SNAPSHOT / "commits.jsonl")}
     )
 
     gold = [entry for entry in _questions() if entry["type"] == GOLD]

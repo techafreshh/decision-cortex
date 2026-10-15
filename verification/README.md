@@ -2,8 +2,8 @@
 
 The pinned regression eval and the honesty backbone of the submission
 (`PRD.md` §11.2, §15.4; `AGENTS.md` "Verification-set honesty"). It doubles as
-the source for the UI's abstention buttons and as the input to the owner-only
-`eval-run` workflow (`.github/workflows/eval-run.yml`).
+the source for the UI's abstention buttons and as the input the Phase-2 live
+eval runner (`eval-run`) will consume.
 
 ## Files
 
@@ -43,9 +43,10 @@ The set is authored **against the committed snapshot**, never from memory
 1. Selecting a decision from `snapshot/rfcs.jsonl` (its `rfc` number and
    `title`/`content`) and confirming the record's `status` is `merged`.
 2. Finding the source that records the decision in `snapshot/commits.jsonl`
-   (the commit whose message introduces/merges the RFC) or, for older RFCs
-   predating the 2014 file-layout commit, a PR comment in
-   `snapshot/pr-comments.jsonl`.
+   (the commit whose message introduces/merges the RFC) or, when the snapshot
+   holds no such commit (older RFCs, or RFCs merged before their file was moved
+   into `text/`), a PR comment in `snapshot/pr-comments.jsonl` that records the
+   decision.
 3. Pinning `expected_rfc` to the record's `rfc` and `expected_citation` to that
    source's `url`.
 
@@ -67,8 +68,8 @@ The exact search terms and the match count (always 0 for the decision) are
 recorded per entry in `verification_method`, including near-miss terms that
 match only unrelated material. Example: the planet-mascot question searches
 `'mascot planet'`, `'planet mascot'` and `'official mascot planet'` (0
-matches), and notes that `'mascot'` alone matches only RFC 2328, a *rejected*
-proposal to adopt Ferris.
+matches), and notes that `'mascot'` alone matches RFC 2302 (a `struct Mascot`
+code example) and RFC 2328, a *rejected* proposal to adopt Ferris.
 
 ## Honesty rule
 
@@ -82,7 +83,9 @@ from the negative set rather than the search being narrowed.
 ```bash
 # Offline shape + grounding validator (also part of the repo's offline CI):
 pytest -q -m 'not integration and not live'
-
-# Owner-only real eval against the live stack (spend-capped, never on push/PR):
-gh workflow run eval-run
 ```
+
+Only the offline validator exists today. The owner-only `eval-run` workflow
+(`.github/workflows/eval-run.yml`) is reserved for the Phase-2 live runner
+(real LLM eval); that runner does not exist yet, so `eval-run` cannot evaluate
+this set and is not a way to run it.
