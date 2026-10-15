@@ -65,6 +65,17 @@ async def _query(host: str, port: int, cypher: str) -> list[list[object]]:
         await connection.close()
 
 
+async def _raw(host: str, port: int, cypher: str) -> None:
+    from graphrag_sdk.storage.graph_store import GraphStore
+
+    connection = _connection(host, port)
+    store = GraphStore(connection)
+    try:
+        await store.query_raw(cypher)
+    finally:
+        await connection.close()
+
+
 async def _counts(host: str, port: int) -> dict[str, object]:
     connection = _connection(host, port)
     try:
@@ -105,6 +116,24 @@ def test_reference_query_returns_expected_rows() -> None:
             ["bob"],
         ]
     ]
+
+
+def test_id_indexes_present_after_ingest() -> None:
+    host, port = _target()
+    asyncio.run(_reset(host, port))
+    asyncio.run(
+        graph.ingest_snapshot(FIXTURE, host=host, port=port, graph_name=GRAPH_NAME)
+    )
+
+    # The load's id-index precondition: re-creating an index that ingest made
+    # must report "already indexed". Without the indexes a real-corpus
+    # relationship batch times out and writes zero edges while reporting
+    # success, so this observable is what guards the precondition.
+    for label in ("Decision", "__Entity__"):
+        with pytest.raises(Exception, match="already indexed"):
+            asyncio.run(
+                _raw(host, port, f"CREATE INDEX FOR (n:{label}) ON (n.id)")
+            )
 
 
 def test_reingest_is_count_idempotent() -> None:
