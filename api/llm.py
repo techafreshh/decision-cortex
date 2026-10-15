@@ -273,7 +273,12 @@ def _choice_model(shape: _Shape) -> type[BaseModel]:
         case _:
             raise TypeError(f"unknown shape {shape!r}")
     confidence = Annotated[float, Field(ge=0.0, le=1.0)]
-    return create_model("TypedDecision", choice=(choice, ...), confidence=(confidence, ...))
+    return create_model(
+        "TypedDecision",
+        __config__=ConfigDict(extra="forbid"),
+        choice=(choice, ...),
+        confidence=(confidence, ...),
+    )
 
 
 def _json_schema_response_format(model_cls: type[BaseModel]) -> dict[str, object]:

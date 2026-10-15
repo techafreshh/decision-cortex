@@ -106,6 +106,24 @@ def test_decide_one_of_returns_typed_choice_and_ledgers(monkeypatch: pytest.Monk
     assert record.escalated is False
 
 
+@pytest.mark.parametrize(
+    "shape",
+    [
+        llm._OneOf(labels=("fact", "impact")),
+        llm._Rating(minimum=0, maximum=5),
+        llm._YesNo(),
+    ],
+)
+def test_typed_decision_schema_closes_the_object_for_strict_mode(shape: object) -> None:
+    response_format = llm._json_schema_response_format(llm._choice_model(shape))
+    json_schema = response_format["json_schema"]
+    assert isinstance(json_schema, dict)
+    assert json_schema["strict"] is True
+    schema = json_schema["schema"]
+    assert isinstance(schema, dict)
+    assert schema["additionalProperties"] is False
+
+
 def test_decide_rating_rejects_out_of_range_then_falls_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
