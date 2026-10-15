@@ -145,13 +145,19 @@ def test_parse_persons_dedupes_and_sorts_handles() -> None:
         assert person["name"] is None
 
 
-def test_parse_persons_skips_missing_handles() -> None:
+def test_parse_persons_skips_deleted_account() -> None:
     decisions = [{"author": None}, {"author": "alice"}]
-    messages = [{"author": ""}, {"author": "bob"}]
+    messages = [{"author": None}, {"author": "bob"}]
 
     persons = parsers.parse_persons(decisions, messages)
 
     assert [person["handle"] for person in persons] == ["alice", "bob"]
+
+
+@pytest.mark.parametrize("handle", ["", "   ", " alice", "alice ", "al ice", 123])
+def test_parse_persons_rejects_non_canonical_handle(handle: object) -> None:
+    with pytest.raises(ValueError):
+        parsers.parse_persons([{"author": handle}], [])
 
 
 def test_committed_corpus_parses_onto_schema_statuses() -> None:

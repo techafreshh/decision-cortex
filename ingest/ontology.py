@@ -1,11 +1,13 @@
 """Dependency-free Phase-0 draft of the Decision Cortex graph ontology.
 
 Declares the canonical ``PRD.md`` §15.3 schema as local frozen dataclasses whose
-field names and constructor shape mirror GraphRAG-SDK v1.1.0
+field names, defaults, and identity semantics mirror GraphRAG-SDK v1.1.0
 (``graphrag_sdk.core.models``). This is a *draft*: Phase-1 ingestion swaps the
 four classes below for the SDK's own ``PropertyType`` / ``EntityType`` /
 ``RelationType`` / ``GraphSchema`` by changing the import, because the
-constructors match — ``SCHEMA`` then feeds ontology-constrained extraction.
+constructors and label-only identity match — ``SCHEMA`` then feeds
+ontology-constrained extraction. ``ingest/tests/test_ontology.py`` pins that
+parity (skipped when the SDK is not installed).
 
 Nothing here imports FalkorDB, touches the network, or calls an LLM
 (``AGENTS.md`` prep-line rule). Only the four node types with a committed
@@ -34,26 +36,48 @@ class PropertyType:
     required: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class EntityType:
-    """Definition of a node/entity type in the graph schema."""
+    """Definition of a node/entity type in the graph schema.
+
+    Identity is by ``label`` only, matching GraphRAG-SDK v1.1.0: two instances
+    with the same label but different descriptions or properties compare and
+    hash equal, so the Phase-1 import swap preserves set/dedupe semantics.
+    """
 
     label: str
     description: str | None = None
     properties: list[PropertyType] = field(default_factory=list)
 
+    def __hash__(self) -> int:
+        return hash(self.label)
 
-@dataclass(frozen=True)
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, EntityType):
+            return NotImplemented
+        return self.label == other.label
+
+
+@dataclass(frozen=True, eq=False)
 class RelationType:
     """Definition of a relationship type in the graph schema.
 
     ``patterns`` lists the allowed directional ``(source_label, target_label)``
     pairs; an empty list means the relation is open between any entity types.
+    Identity is by ``label`` only, matching GraphRAG-SDK v1.1.0.
     """
 
     label: str
     description: str | None = None
     patterns: list[tuple[str, str]] = field(default_factory=list)
+
+    def __hash__(self) -> int:
+        return hash(self.label)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, RelationType):
+            return NotImplemented
+        return self.label == other.label
 
 
 @dataclass(frozen=True)

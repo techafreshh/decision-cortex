@@ -95,6 +95,18 @@ def parse_person(handle: str) -> dict[str, Any]:
     return {"handle": handle, "name": None}
 
 
+def _canonical_handle(handle: Any) -> str:
+    """Return ``handle`` if it is a canonical GitHub handle, else raise.
+
+    A canonical handle is a non-empty string with no whitespace anywhere; a
+    blanked or malformed corpus value must surface as an error rather than
+    become a bogus ``:Person`` id (invariant: handles are the canonical id).
+    """
+    if not isinstance(handle, str) or not handle or any(c.isspace() for c in handle):
+        raise ValueError(f"non-canonical author handle: {handle!r}")
+    return handle
+
+
 def parse_rfcs(records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Map an iterable of ``rfcs.jsonl`` records onto Decision dicts."""
     return [parse_decision(record) for record in records]
@@ -116,12 +128,14 @@ def parse_persons(
 ) -> list[dict[str, Any]]:
     """Derive the canonical Person dicts from Decision and Message authors.
 
-    De-duplicated by handle and sorted for determinism; records without an
-    author handle (a deleted GitHub account) contribute no Person.
+    De-duplicated by handle and sorted for determinism. A ``None`` author (a
+    deleted GitHub account) contributes no Person; any other non-canonical
+    handle raises ``ValueError`` via :func:`_canonical_handle` rather than
+    silently dropping or admitting a bogus id.
     """
     handles = {
-        record["author"]
+        _canonical_handle(record["author"])
         for record in chain(decisions, messages)
-        if record["author"]
+        if record["author"] is not None
     }
     return [parse_person(handle) for handle in sorted(handles)]
