@@ -373,7 +373,7 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 **Deliverables:**
 - [ ] Codebase scaffold + CI (lint, unit, compose smoke) — `AGENTS.md` already covers rules, workstream split, and demo beats; keep it current
 - [x] **Day-0 spike: JSONL snapshot pipeline against GitHub REST** (rate-limit-safe; PAT from vault `GITHUB_TOKEN`) — **pin the snapshot by Oct 14**
-- [ ] Verification set authored AND checked against the snapshot (every no-record question verified absent)
+- [x] Verification set authored AND checked against the snapshot (every no-record question verified absent)
 - [ ] Parsers emitting plain dicts (no FalkorDB calls); ontology drafts (GraphSchema/EntityType/RelationType)
 - [ ] Prompt drafts for `decide` tollgates + `reason` roles
 - [ ] UI mockups + shared dark "graph-ops" component kit skeleton
