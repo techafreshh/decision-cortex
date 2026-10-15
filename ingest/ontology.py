@@ -2,12 +2,13 @@
 
 Declares the canonical ``PRD.md`` §15.3 schema as local frozen dataclasses whose
 field names, defaults, and identity semantics mirror GraphRAG-SDK v1.1.0
-(``graphrag_sdk.core.models``). This is a *draft*: Phase-1 ingestion swaps the
-four classes below for the SDK's own ``PropertyType`` / ``EntityType`` /
-``RelationType`` / ``GraphSchema`` by changing the import, because the
-constructors and label-only identity match — ``SCHEMA`` then feeds
-ontology-constrained extraction. ``ingest/tests/test_ontology.py`` pins that
-parity (skipped when the SDK is not installed).
+(``graphrag_sdk.core.models``). Phase-1 ingestion reads this ``SCHEMA`` directly
+to validate its deterministic payload (:mod:`ingest.graph`); the swap to the
+SDK's own ``PropertyType`` / ``EntityType`` / ``RelationType`` / ``GraphSchema``
+classes is deferred to the Phase-2/3 ontology-constrained extraction path,
+which changes the import because the constructors and label-only identity
+match. ``ingest/tests/test_ontology.py`` pins that parity (skipped when the SDK
+is not installed).
 
 Nothing here imports FalkorDB, touches the network, or calls an LLM
 (``AGENTS.md`` prep-line rule). Only the four node types with a committed
