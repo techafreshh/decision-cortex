@@ -81,6 +81,29 @@ def test_embed_documents_returns_vectors_in_input_order(
     assert fake.payloads[0]["model"] == llm.DEFAULT_EMBEDDING_MODEL_SLUG
 
 
+def test_embed_documents_reorders_a_scrambled_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The endpoint may return items out of order; vectors follow their index."""
+    monkeypatch.setenv("EMBEDDING_DIMENSION", "2")
+
+    def scrambled(payload: dict[str, object]) -> dict[str, object]:
+        inputs = payload["input"]
+        assert isinstance(inputs, list)
+        return {
+            "data": [
+                {"embedding": [float(index), float(index) + 0.5], "index": index}
+                for index in reversed(range(len(inputs)))
+            ]
+        }
+
+    monkeypatch.setattr(llm, "_post_embeddings", scrambled)
+
+    vectors = llm.embed_documents(["first", "second", "third"])
+
+    assert vectors == [[0.0, 0.5], [1.0, 1.5], [2.0, 2.5]]
+
+
 def test_embed_query_rejects_a_wrong_dimension(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EMBEDDING_DIMENSION", "4")
     monkeypatch.setattr(llm, "_post_embeddings", FakeEmbeddings([[0.1, 0.2, 0.3]]))

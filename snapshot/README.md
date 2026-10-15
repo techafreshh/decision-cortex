@@ -16,9 +16,12 @@ reads:
 | `commits.jsonl` | commit touching an RFC text file | `sha`, `rfc`, `ts`, `message`, `url` |
 | `decision-embeddings.jsonl` | RFC embedding | `rfc`, `vector` (float array) |
 
-The record shapes are pinned by the validators in
+The three harvest record shapes are pinned by the validators in
 [`ingest/snapshot_pipeline.py`](../ingest/snapshot_pipeline.py) and exercised by
-the offline test `ingest/tests/test_snapshot_pipeline.py`.
+the offline test `ingest/tests/test_snapshot_pipeline.py`; the optional
+`decision-embeddings.jsonl` shape is read by
+[`ingest/embeddings.py`](../ingest/embeddings.py) and exercised by
+`ingest/tests/test_embeddings.py`.
 
 ## Fetch command
 

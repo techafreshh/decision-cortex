@@ -347,7 +347,7 @@ def test_load_payload_writes_embeddings_and_retrieval_indexes(
 
     assert result.embedded_count == 2
     statements = [cypher for cypher, _ in calls]
-    assert "CALL db.idx.fulltext.createNodeIndex('Decision','title')" in statements
+    assert "CREATE FULLTEXT INDEX FOR (n:Decision) ON (n.title)" in statements
     assert any(
         "CREATE VECTOR INDEX" in cypher and "dimension:3" in cypher for cypher in statements
     )

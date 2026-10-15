@@ -84,7 +84,7 @@ The core value proposition has three parts. **(a) Provenance by construction:** 
 **Agent**
 - [ ] **System 1 / System 2 split** via OpenRouter only: `decide()` decision model (question router 1-of-4: fact · decision-provenance · impact · out-of-graph; per-claim y/n + confidence; impact-node relevance 0–5; recall-sufficiency stop) and `reason()` synthesis model (sentence-by-sentence answers, impact narratives, no-record verdicts)
 - [ ] Confidence-escalation: S1 confidence < threshold → escalate to S2
-- [ ] **Decision ledger**: every call recorded (input digest, choice, confidence, model, latency, cost, escalated flag) → live UI footer
+- [ ] **Decision ledger**: every decision call recorded (input digest, choice, confidence, model, latency, cost, escalated flag) → live UI footer
 - [ ] Query-side retrieval: vector seed + full-text + multi-hop traversal in FalkorDB
 
 **MCP (minimal, scope guard)**
@@ -191,7 +191,7 @@ Agent core (FastAPI):
 
 ### 6.2 Key patterns
 
-- **System 1 / System 2 separation.** All typing/classification/rating work runs on the cheap decision model (`decide()`); only synthesis, impact narratives, and no-record verdicts run on the frontier reasoner (`reason()`). Escalation: S1 confidence < threshold → S2 handles that step. Every call lands in the ledger.
+- **System 1 / System 2 separation.** All typing/classification/rating work runs on the cheap decision model (`decide()`); only synthesis, impact narratives, and no-record verdicts run on the frontier reasoner (`reason()`). Escalation: S1 confidence < threshold → S2 handles that step. Every decision call lands in the ledger; retrieval embeddings record their cost/latency on the retrieval row.
 - **Ontology-constrained extraction.** GraphRAG-SDK's `GraphSchema`/`EntityType`/`RelationType` constrain what gets extracted; `grounded_answers_with_abstention` is a *shipping SDK example* we adapt — abstention is the vendor's own pattern (cite it), not a custom hack.
 - **Claim gate = the citation mechanism.** S2 emits sentence-by-sentence; per sentence, `decide()` maps it to evidence nodes (y/n + confidence). Uncited sentences are flagged; uncited key claims trigger abstention. The gate *is* the provenance path to the chips.
 - **Retrieval = graph-native.** Vector seed + full-text + multi-hop traversal in FalkorDB. Text-to-Cypher (SDK experimental) is a display flourish (CypherPeek), never the backbone.

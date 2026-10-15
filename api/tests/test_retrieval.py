@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from api import llm, retrieval
+from ingest import ontology
 
 ENV_VARS = ("OPENROUTER_API_KEY", "DECIDE_MODEL_SLUG", "REASON_MODEL_SLUG", "SPEND_CAP_USD")
 
@@ -269,3 +270,19 @@ def test_sufficiency_stop_returns_the_boolean_choice() -> None:
 
     assert retrieval.sufficiency_stop(facts, decide_fn=decide(True)) is True
     assert retrieval.sufficiency_stop(facts, decide_fn=decide(False)) is False
+
+
+def test_retrieval_relations_match_the_schema() -> None:
+    decision_out = {
+        relation.label
+        for relation in ontology.SCHEMA.relations
+        if any(src == "Decision" for src, _ in relation.patterns)
+    }
+    decision_in = {
+        relation.label
+        for relation in ontology.SCHEMA.relations
+        if any(dst == "Decision" for _, dst in relation.patterns)
+    }
+
+    assert set(retrieval._OUT_RELATIONS) == decision_out
+    assert set(retrieval._IN_RELATIONS) == decision_in

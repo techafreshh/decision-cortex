@@ -533,7 +533,7 @@ async def _ensure_retrieval_indexes(store: Any, dimension: int | None) -> None:
     created or written afterwards. The vector index is created only when there
     are embeddings to search, and its dimension must match them.
     """
-    await _create_index(store, "CALL db.idx.fulltext.createNodeIndex('Decision','title')")
+    await _create_index(store, "CREATE FULLTEXT INDEX FOR (n:Decision) ON (n.title)")
     if dimension is not None:
         await _create_index(
             store,

@@ -31,13 +31,17 @@ from typing import Any, Protocol
 
 from api import llm
 
-#: Outgoing §15.3 relations that start at a Decision.
+#: Outgoing §15.3 relations that start at a Decision. ``api`` ships without
+#: ``ingest`` (the wheel packages ``api`` only), so this cannot be derived from
+#: ``ontology.SCHEMA`` at runtime; ``test_retrieval_relations_match_the_schema``
+#: pins it to the canonical schema instead.
 _OUT_RELATIONS = (
     "EVIDENCED_BY",
     "PROPOSED_BY",
     "ABOUT",
     "ASSOCIATED_TEAM",
     "AREA",
+    "HAS_VERSION",
     "SUPERSEDES",
 )
 #: §15.3 relations whose target is the Decision (stance edges plus supersession).

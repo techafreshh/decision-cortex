@@ -18,7 +18,7 @@ embeds a query records its own row (with the embedding's cost/latency) at the
 retrieval layer instead. ``embed_query`` returns the vector with its call trace
 so that row can be honest.
 
-Every completed model call appends one :class:`LedgerRecord` (the locked
+Every completed decision call appends one :class:`LedgerRecord` (the locked
 seven-field schema) via :func:`ledger_append`. Once the ledger's cumulative
 ``cost_usd`` reaches ``SPEND_CAP_USD``, new calls raise
 :class:`SpendCapExceededError` before any HTTP request is made.
@@ -167,13 +167,14 @@ class _TypedChoice:
     confidence: float
 
 
-def _post_chat_completion(payload: dict[str, object]) -> dict[str, object]:
-    """The single seam that talks to OpenRouter; tests substitute this."""
+def _post_openrouter(url: str, payload: dict[str, object]) -> object:
+    """The one authenticated OpenRouter HTTP round-trip; the two named seams
+    below validate its body shape and are the seams tests substitute."""
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is empty; OpenRouter is the only provider")
     response = httpx.post(
-        OPENROUTER_URL,
+        url,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -182,7 +183,12 @@ def _post_chat_completion(payload: dict[str, object]) -> dict[str, object]:
         timeout=_REQUEST_TIMEOUT_S,
     )
     response.raise_for_status()
-    data = response.json()
+    return response.json()
+
+
+def _post_chat_completion(payload: dict[str, object]) -> dict[str, object]:
+    """The single seam that talks to OpenRouter; tests substitute this."""
+    data = _post_openrouter(OPENROUTER_URL, payload)
     if not isinstance(data, dict):
         raise ModelOutputError("OpenRouter returned a non-object response body")
     return data
@@ -444,20 +450,7 @@ def reason(prompt: str) -> str:
 
 def _post_embeddings(payload: dict[str, object]) -> dict[str, object]:
     """The single seam that talks to OpenRouter's embeddings endpoint."""
-    api_key = os.environ.get("OPENROUTER_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("OPENROUTER_API_KEY is empty; OpenRouter is the only provider")
-    response = httpx.post(
-        OPENROUTER_EMBEDDINGS_URL,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=_REQUEST_TIMEOUT_S,
-    )
-    response.raise_for_status()
-    data = response.json()
+    data = _post_openrouter(OPENROUTER_EMBEDDINGS_URL, payload)
     if not isinstance(data, dict):
         raise EmbeddingError("OpenRouter returned a non-object embeddings body")
     return data

@@ -17,18 +17,22 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from enum import StrEnum
+from typing import Protocol
 
 from api import llm
 
-ROUTE_LABELS: tuple[str, ...] = (
-    "fact",
-    "decision-provenance",
-    "impact",
-    "out-of-graph",
-)
 
-Route = Literal["fact", "decision-provenance", "impact", "out-of-graph"]
+class Route(StrEnum):
+    """The four PRD §7.1 routes; the single declaration of the route set."""
+
+    FACT = "fact"
+    DECISION_PROVENANCE = "decision-provenance"
+    IMPACT = "impact"
+    OUT_OF_GRAPH = "out-of-graph"
+
+
+ROUTE_LABELS: tuple[str, ...] = tuple(route.value for route in Route)
 
 _ROUTER_PROMPT = (
     "You route questions about the rust-lang/rfcs decision corpus, a graph of "
@@ -69,7 +73,7 @@ def router_classify(
     """Classify ``question`` into one of :data:`ROUTE_LABELS`."""
     result = decide_fn(f"{_ROUTER_PROMPT}Question: {question}", one_of=ROUTE_LABELS)
     return RouterResult(
-        label=result.choice,  # type: ignore[arg-type]
+        label=Route(result.choice),
         confidence=result.confidence,
         escalated=result.escalated,
     )
