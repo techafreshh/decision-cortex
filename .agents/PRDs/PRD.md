@@ -84,7 +84,7 @@ The core value proposition has three parts. **(a) Provenance by construction:** 
 **Agent**
 - [ ] **System 1 / System 2 split** via OpenRouter only: `decide()` decision model (question router 1-of-4: fact · decision-provenance · impact · out-of-graph; per-claim y/n + confidence; impact-node relevance 0–5; recall-sufficiency stop) and `reason()` synthesis model (sentence-by-sentence answers, impact narratives, no-record verdicts)
 - [ ] Confidence-escalation: S1 confidence < threshold → escalate to S2
-- [ ] **Decision ledger**: every call recorded (input digest, choice, confidence, model, latency, cost, escalated flag) → live UI footer
+- [ ] **Decision ledger**: every decision call recorded (input digest, choice, confidence, model, latency, cost, escalated flag) → live UI footer
 - [ ] Query-side retrieval: vector seed + full-text + multi-hop traversal in FalkorDB
 
 **MCP (minimal, scope guard)**
@@ -191,7 +191,7 @@ Agent core (FastAPI):
 
 ### 6.2 Key patterns
 
-- **System 1 / System 2 separation.** All typing/classification/rating work runs on the cheap decision model (`decide()`); only synthesis, impact narratives, and no-record verdicts run on the frontier reasoner (`reason()`). Escalation: S1 confidence < threshold → S2 handles that step. Every call lands in the ledger.
+- **System 1 / System 2 separation.** All typing/classification/rating work runs on the cheap decision model (`decide()`); only synthesis, impact narratives, and no-record verdicts run on the frontier reasoner (`reason()`). Escalation: S1 confidence < threshold → S2 handles that step. Every decision call lands in the ledger; a query embedding records its cost/latency on the retrieval row (document embeddings are the one-time ingestion step, not ledger rows).
 - **Ontology-constrained extraction.** GraphRAG-SDK's `GraphSchema`/`EntityType`/`RelationType` constrain what gets extracted; `grounded_answers_with_abstention` is a *shipping SDK example* we adapt — abstention is the vendor's own pattern (cite it), not a custom hack.
 - **Claim gate = the citation mechanism.** S2 emits sentence-by-sentence; per sentence, `decide()` maps it to evidence nodes (y/n + confidence). Uncited sentences are flagged; uncited key claims trigger abstention. The gate *is* the provenance path to the chips.
 - **Retrieval = graph-native.** Vector seed + full-text + multi-hop traversal in FalkorDB. Text-to-Cypher (SDK experimental) is a display flourish (CypherPeek), never the backbone.
@@ -281,10 +281,12 @@ Read-peephole using `@falkordb/mcpserver`: list node labels/relations, run read-
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `OPENROUTER_API_KEY` | Yes (runtime) | S1 + S2 calls; **dedicated per-deploy key, hard spend cap: $10** |
+| `OPENROUTER_API_KEY` | Yes (runtime) | S1 + S2 calls and retrieval embeddings; **dedicated per-deploy key, hard spend cap: $10** |
 | `GITHUB_TOKEN` | No (runtime) | Free GitHub PAT for the one-time snapshot pull and *refresh only* — the snapshot ships committed, so judge runs need no token |
 | `DECIDE_MODEL_SLUG` | No | OpenRouter slug for S1; default = fallback small model (strict JSON) until pinned |
 | `REASON_MODEL_SLUG` | No | OpenRouter slug for S2 |
+| `EMBEDDING_MODEL_SLUG` | No | OpenRouter slug for retrieval embeddings; default `openai/text-embedding-3-small`. Must match the committed `snapshot/decision-embeddings.jsonl` (§15.3) |
+| `EMBEDDING_DIMENSION` | No | Retrieval embedding dimension; default 1536. Must match the committed artifact and the FalkorDB vector index (§15.3) |
 | `SPEND_CAP_USD` | No | Hard-stop guard + ledger alerting (default 10) |
 | `DB_FALKORDB_URL` etc. | No | Compose-internal defaults |
 
@@ -496,6 +498,13 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 (:Concept)-[:RELATES {strength}]->(:Concept)
 ```
 Corpus RFC statuses (`active | merged | accepted | rejected | replaced | closed`) normalize onto schema status; `merged` maps to `accepted` (shipped as merged FCP), `active` to `proposed`.
+
+**Retrieval indexes (derived, out-of-band).** The query-side retrieval (PRD §6.2, §7.1 `retrieve_evidence`) needs indexes that are derived index data, not canonical payload properties, so they are created by the loader and never written through a `Payload` node:
+
+- a **vector index** on `Decision.embedding`, where `embedding` is a `vecf32` stamped from the committed `snapshot/decision-embeddings.jsonl` (produced once by `ingest.embeddings` with the same OpenRouter embedding slug/dimension used for query embeddings);
+- a **full-text index** on `Decision.title` (the only node property the full-text seed queries; the graph stores no Message body or RFC content — only refs — so there is nothing else to index).
+
+`embedding` is deliberately **not** added to the `Decision` property list above: `validate_payload` still rejects it inside a payload, because a plain float array stored through `upsert_nodes` would not be a `vecf32` and would break the vector index. Model slug and dimension must match between document and query embeddings.
 
 **Reference Cypher flavors:**
 ```cypher

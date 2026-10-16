@@ -11,7 +11,14 @@ question is handed to the S2 model and the result comes back with
 
 ``reason()`` asks the S2 model for synthesis text and returns it verbatim.
 
-Every completed model call appends one :class:`LedgerRecord` (the locked
+``embed_documents()`` / ``embed_query()`` are the retrieval embeddings — the
+only OpenRouter call that is neither ``decide`` nor ``reason``. They are not
+ledger rows: the decision ledger tracks model *decisions*, and a retrieval that
+embeds a query records its own row (with the embedding's cost/latency) at the
+retrieval layer instead. ``embed_query`` returns the vector with its call trace
+so that row can be honest.
+
+Every completed decision call appends one :class:`LedgerRecord` (the locked
 seven-field schema) via :func:`ledger_append`. Once the ledger's cumulative
 ``cost_usd`` reaches ``SPEND_CAP_USD``, new calls raise
 :class:`SpendCapExceededError` before any HTTP request is made.
@@ -23,6 +30,8 @@ restart):
   tests substitute the HTTP seam.
 - ``DECIDE_MODEL_SLUG`` — S1 slug (default: ``FALLBACK_MODEL_SLUG``).
 - ``REASON_MODEL_SLUG`` — S2 slug (default: ``FALLBACK_MODEL_SLUG``).
+- ``EMBEDDING_MODEL_SLUG`` — embedding slug (default ``openai/text-embedding-3-small``).
+- ``EMBEDDING_DIMENSION`` — embedding dimension (default 1536).
 - ``SPEND_CAP_USD`` — hard stop on cumulative ledger cost (default 10).
 """
 
@@ -38,11 +47,18 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_EMBEDDINGS_URL = "https://openrouter.ai/api/v1/embeddings"
 
 # The PRD's small-model fallback: cheap, widely available on OpenRouter, and
 # reliable at emitting strict JSON. It is also the default slug for both
 # lanes until pinning assigns a primary decision/reason model.
 FALLBACK_MODEL_SLUG = "openai/gpt-4o-mini"
+
+# The retrieval embeddings model. Document embeddings (committed at event time
+# by ``ingest.embeddings``) and query embeddings must use the same slug and
+# dimension or the FalkorDB vector index compares vectors from different spaces.
+DEFAULT_EMBEDDING_MODEL_SLUG = "openai/text-embedding-3-small"
+DEFAULT_EMBEDDING_DIMENSION = 1536
 
 DEFAULT_SPEND_CAP_USD = 10.0
 
@@ -60,11 +76,24 @@ class SpendCapExceededError(RuntimeError):
     """Cumulative ledger spend reached ``SPEND_CAP_USD``; new calls are refused."""
 
 
+class EmbeddingError(RuntimeError):
+    """The embeddings endpoint returned nothing the contract can accept."""
+
+
 @dataclass(frozen=True, slots=True)
 class DecideResult[TChoice: (str, int, bool)]:
     choice: TChoice
     confidence: float
     escalated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddingResult:
+    """One query embedding plus the call's cost/latency for the ledger row."""
+
+    vector: list[float]
+    latency_ms: int
+    cost_usd: float
 
 
 class LedgerRecord(BaseModel):
@@ -138,13 +167,14 @@ class _TypedChoice:
     confidence: float
 
 
-def _post_chat_completion(payload: dict[str, object]) -> dict[str, object]:
-    """The single seam that talks to OpenRouter; tests substitute this."""
+def _post_openrouter(url: str, payload: dict[str, object]) -> object:
+    """The one authenticated OpenRouter HTTP round-trip; the two named seams
+    below validate its body shape and are the seams tests substitute."""
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is empty; OpenRouter is the only provider")
     response = httpx.post(
-        OPENROUTER_URL,
+        url,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -153,7 +183,12 @@ def _post_chat_completion(payload: dict[str, object]) -> dict[str, object]:
         timeout=_REQUEST_TIMEOUT_S,
     )
     response.raise_for_status()
-    data = response.json()
+    return response.json()
+
+
+def _post_chat_completion(payload: dict[str, object]) -> dict[str, object]:
+    """The single seam that talks to OpenRouter; tests substitute this."""
+    data = _post_openrouter(OPENROUTER_URL, payload)
     if not isinstance(data, dict):
         raise ModelOutputError("OpenRouter returned a non-object response body")
     return data
@@ -161,6 +196,25 @@ def _post_chat_completion(payload: dict[str, object]) -> dict[str, object]:
 
 def _model_slug(env_var: str) -> str:
     return os.environ.get(env_var, "").strip() or FALLBACK_MODEL_SLUG
+
+
+def embedding_model_slug() -> str:
+    """The configured embedding model slug (``EMBEDDING_MODEL_SLUG`` or default)."""
+    return os.environ.get("EMBEDDING_MODEL_SLUG", "").strip() or DEFAULT_EMBEDDING_MODEL_SLUG
+
+
+def embedding_dimension() -> int:
+    """The configured embedding dimension (``EMBEDDING_DIMENSION`` or default)."""
+    raw = os.environ.get("EMBEDDING_DIMENSION", "").strip()
+    if not raw:
+        return DEFAULT_EMBEDDING_DIMENSION
+    try:
+        dimension = int(raw)
+    except ValueError:
+        raise ValueError(f"EMBEDDING_DIMENSION={raw!r} is not an integer") from None
+    if dimension < 1:
+        raise ValueError(f"EMBEDDING_DIMENSION={raw!r} must be positive")
+    return dimension
 
 
 def _env_float(env_var: str, default: float) -> float:
@@ -393,3 +447,75 @@ def reason(prompt: str) -> str:
         )
     )
     return trace.content
+
+
+def _post_embeddings(payload: dict[str, object]) -> dict[str, object]:
+    """The single seam that talks to OpenRouter's embeddings endpoint."""
+    data = _post_openrouter(OPENROUTER_EMBEDDINGS_URL, payload)
+    if not isinstance(data, dict):
+        raise EmbeddingError("OpenRouter returned a non-object embeddings body")
+    return data
+
+
+def _embedding_vectors(model: str, data: dict[str, object]) -> list[list[float]]:
+    """Extract vectors in input order; a malformed item is never guessed at."""
+    items = data.get("data")
+    if not isinstance(items, list) or not items:
+        raise EmbeddingError(f"{model} returned no embeddings")
+    ordered: list[tuple[int, list[float]]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise EmbeddingError(f"{model} returned a malformed embedding item")
+        vector = item.get("embedding")
+        index = item.get("index")
+        if not isinstance(vector, list) or not all(
+            isinstance(value, int | float) and not isinstance(value, bool)
+            for value in vector
+        ):
+            raise EmbeddingError(f"{model} returned a non-numeric embedding vector")
+        if not isinstance(index, int):
+            raise EmbeddingError(f"{model} returned an embedding without an index")
+        ordered.append((index, [float(value) for value in vector]))
+    ordered.sort(key=lambda pair: pair[0])
+    return [vector for _, vector in ordered]
+
+
+def _request_embeddings(texts: Sequence[str]) -> tuple[list[list[float]], int, float]:
+    _enforce_spend_cap()
+    model = embedding_model_slug()
+    dimension = embedding_dimension()
+    payload: dict[str, object] = {
+        "model": model,
+        "input": list(texts),
+        "dimensions": dimension,
+    }
+    started = time.monotonic()
+    data = _post_embeddings(payload)
+    latency_ms = int((time.monotonic() - started) * 1000)
+    vectors = _embedding_vectors(model, data)
+    for vector in vectors:
+        if len(vector) != dimension:
+            raise EmbeddingError(
+                f"{model} returned a {len(vector)}-dim vector, expected {dimension}"
+            )
+    return vectors, latency_ms, _reported_cost(data)
+
+
+def embed_documents(texts: Sequence[str]) -> list[list[float]]:
+    """Embed a batch of documents: one vector per input, in input order."""
+    vectors, _, _ = _request_embeddings(texts)
+    if len(vectors) != len(texts):
+        raise EmbeddingError(
+            f"embeddings endpoint returned {len(vectors)} vectors for {len(texts)} inputs"
+        )
+    return vectors
+
+
+def embed_query(text: str) -> EmbeddingResult:
+    """Embed one query; the returned trace feeds the retrieval ledger row."""
+    vectors, latency_ms, cost_usd = _request_embeddings([text])
+    if len(vectors) != 1:
+        raise EmbeddingError(
+            f"embeddings endpoint returned {len(vectors)} vectors for one input"
+        )
+    return EmbeddingResult(vector=vectors[0], latency_ms=latency_ms, cost_usd=cost_usd)

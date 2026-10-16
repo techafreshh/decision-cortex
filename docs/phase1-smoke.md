@@ -20,8 +20,13 @@ Two consecutive runs over the unchanged `snapshot/`:
 
 | Run | CLI output | `MATCH (n)` | `MATCH ()-[r]->()` |
 |---|---|---|---|
-| 1 | `28483 nodes, 31938 edges` | 28,483 | 31,938 |
-| 2 | `28483 nodes, 31938 edges` | 28,483 | 31,938 |
+| 1 | `28483 nodes, 31938 edges, 0 embeddings` | 28,483 | 31,938 |
+| 2 | `28483 nodes, 31938 edges, 0 embeddings` | 28,483 | 31,938 |
+
+The trailing `0 embeddings` is expected: the optional
+`snapshot/decision-embeddings.jsonl` is absent (it is not committed until it has
+been generated with a real key), so the loader stamps no vectors and creates no
+vector index.
 
 Per-label node counts (identical both runs): Decision 2,309 · Person 1,272 ·
 Message 21,623 · Commit 2,451 · DocVersion 642 · Team 20 · Area 166.
