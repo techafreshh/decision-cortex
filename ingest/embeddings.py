@@ -19,7 +19,6 @@ transforms are tested offline with no network and no key.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
@@ -127,13 +126,12 @@ def write_decision_embeddings(
     rows = build_decision_embeddings(records, embed=embed, dimension=dimension)
 
     target = Path(out) if out is not None else directory / EMBEDDINGS_FILENAME
-    metadata = json.dumps(
-        {"model": model, "dimension": dimension}, separators=(",", ":")
+    target.write_text(
+        snapshot_pipeline.render_jsonl(
+            [{"model": model, "dimension": dimension}, *rows]
+        ),
+        encoding="utf-8",
     )
-    rendered = metadata + "\n" + "".join(
-        json.dumps(row, separators=(",", ":")) + "\n" for row in rows
-    )
-    target.write_text(rendered, encoding="utf-8")
     return len(rows)
 
 

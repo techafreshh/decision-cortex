@@ -50,6 +50,23 @@ def test_build_sorts_by_rfc_and_keeps_input_order_within_batches() -> None:
     assert all(len(row["vector"]) == 2 for row in rows)
 
 
+def test_build_pairs_each_vector_with_its_own_record() -> None:
+    records = [
+        _record(3, title="three"),
+        _record(1, title="one"),
+        _record(2, title="two!"),
+    ]
+    fake = FakeEmbed(dimension=1)
+
+    rows = embeddings.build_decision_embeddings(records, embed=fake, dimension=1)
+
+    assert {row["rfc"]: row["vector"] for row in rows} == {
+        1: [3.0],
+        2: [4.0],
+        3: [5.0],
+    }
+
+
 def test_build_batches_large_inputs() -> None:
     records = [_record(rfc, title=f"r{rfc}") for rfc in range(embeddings.BATCH_SIZE + 1)]
     fake = FakeEmbed(dimension=1)

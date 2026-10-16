@@ -150,11 +150,11 @@ them and never writes them through a `Payload` node:
   Decisions (a `Commit.message` index would have no caller).
 - **Vector:** `Decision.embedding`, a `vecf32` stamped from committed vectors.
 
-The full-text index is created **before** `upsert_nodes` because FalkorDB only
-picks up entities written after the index exists (an index created after the
-nodes stays empty until the next write). Index creation is idempotent the same
-way the `id` indexes are: re-creating an existing index raises "already
-indexed", which `_create_index` swallows.
+The full-text index is created **before** `upsert_nodes` so the write path
+populates it deterministically, rather than relying on FalkorDB's asynchronous
+background population of already-present nodes. Index creation is idempotent
+the same way the `id` indexes are: re-creating an existing index raises
+"already indexed", which `_create_index` swallows.
 
 ### The vector seed is committed data, not a boot-time embed
 

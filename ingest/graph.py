@@ -320,8 +320,8 @@ async def load_payload(
     Nodes are written before relationships so every edge can match its
     endpoints. Re-running an unchanged payload only re-``MERGE``s, leaving the
     node and edge counts unchanged. When ``embeddings`` is given, the full-text
-    and vector indexes are created first (a full-text index only picks up nodes
-    written after it), the Decisions are stamped with their ``vecf32`` vectors,
+    and vector indexes are created first so the write path populates them
+    deterministically, the Decisions are stamped with their ``vecf32`` vectors,
     and ``embedded_count`` reports how many were written.
     """
     from graphrag_sdk import ConnectionConfig, FalkorDBConnection, GraphStore

@@ -227,6 +227,27 @@ def test_sufficiency_false_runs_to_max_rounds() -> None:
     assert {n.id for n in result.evidence_nodes} >= {"rfc:200", "rfc:300", "rfc:400"}
 
 
+def test_incoming_supersession_promotes_a_decision_into_the_next_frontier() -> None:
+    reader = FakeReader(
+        fulltext=[("rfc:200", 3.0)],
+        incoming={"rfc:200": [("SUPERSEDES", node("Decision", "rfc:300"))]},
+        out={"rfc:300": [("SUPERSEDES", node("Decision", "rfc:400"))]},
+    )
+
+    result = retrieval.retrieve_evidence(
+        "trait objects",
+        "impact",
+        reader=reader,
+        decide_fn=decide(False),
+        max_rounds=2,
+    )
+
+    assert result.rounds == 2
+    assert {n.id for n in result.evidence_nodes} >= {"rfc:200", "rfc:300", "rfc:400"}
+    assert retrieval.QueryStep("rfc:300", "SUPERSEDES", "rfc:200") in result.query_path
+    assert retrieval.QueryStep("rfc:300", "SUPERSEDES", "rfc:400") in result.query_path
+
+
 def test_retrieve_evidence_appends_one_ledger_record(monkeypatch: pytest.MonkeyPatch) -> None:
     reader = FakeReader(fulltext=[("rfc:200", 3.0)])
     monkeypatch.setattr(
