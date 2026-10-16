@@ -158,8 +158,9 @@ indexed", which `_create_index` swallows.
 
 ### The vector seed is committed data, not a boot-time embed
 
-`snapshot/decision-embeddings.jsonl` holds one `{rfc, vector}` per RFC, produced
-once by `python -m ingest.embeddings` with the OpenRouter embeddings endpoint.
+`snapshot/decision-embeddings.jsonl` holds a metadata row (`model`,
+`dimension`) followed by one `{rfc, vector}` per RFC, produced once by
+`python -m ingest.embeddings` with the OpenRouter embeddings endpoint.
 Committing them (rather than embedding at seed-on-boot) is the only route that
 keeps automated CI at **zero LLM calls** *and* keeps judge replay at **≈ $0**,
 while still doing the vector search **in FalkorDB** (no in-memory side channel).
@@ -172,9 +173,13 @@ which is not a `vecf32` and would break the vector index. `validate_payload`
 therefore still rejects an `embedding` key in a payload. The embedding model
 slug and dimension are shared config (`EMBEDDING_MODEL_SLUG` /
 `EMBEDDING_DIMENSION`, default `openai/text-embedding-3-small`, 1536) so
-document and query embeddings come from the same space; `load_payload` derives
-the index dimension from the committed vectors and rejects a mixed or empty
-dimension.
+document and query embeddings come from the same space. The artifact records
+the model slug and dimension that produced its vectors; `load_payload` compares
+them against that config and refuses to build the index when they disagree —
+otherwise a dimension mismatch would fail every vector query and a
+same-dimension/different-model mismatch would silently search with vectors from
+another space. `read_decision_embeddings` also rejects a vector whose length
+disagrees with the recorded dimension.
 
 When the embeddings file is absent (as in CI), the loader creates no vector
 index and `retrieve_evidence` degrades to full-text plus traversal — so the

@@ -21,10 +21,13 @@ seam; deriving them over the real corpus is Phase 2/3 work behind the same
 The retrieval indexes are derived, out-of-band data: the loader creates the
 full-text index on ``Decision.title`` and — when a committed
 ``decision-embeddings.jsonl`` is present — stamps each Decision with a
-``vecf32`` embedding and creates the vector index. Embeddings are written by
-raw Cypher, never through a ``Payload`` node, so they are not canonical record
-properties and ``validate_payload`` still rejects an ``embedding`` property in a
-payload.
+``vecf32`` embedding and creates the vector index. The artifact records the
+embedding model slug and dimension that produced it; the loader refuses to build
+the index when they disagree with the query embedder's configuration, so the
+index and the queries are never from different vector spaces. Embeddings are
+written by raw Cypher, never through a ``Payload`` node, so they are not
+canonical record properties and ``validate_payload`` still rejects an
+``embedding`` property in a payload.
 
 The parser contract is the reason ``contents`` is a separate argument:
 :func:`ingest.parsers.parse_decision` intentionally drops the RFC markdown
@@ -41,9 +44,12 @@ import os
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ingest import ontology, parsers, snapshot_pipeline
+
+if TYPE_CHECKING:
+    from ingest.embeddings import DecisionEmbeddings
 
 #: RFC label prefixes that become ``:Team`` / ``:Area`` nodes (no OWNERS files
 #: exist in the snapshot, so the label is the only derivation source).
@@ -307,7 +313,7 @@ async def load_payload(
     host: str,
     port: int,
     graph_name: str,
-    embeddings: Mapping[int, list[float]] | None = None,
+    embeddings: DecisionEmbeddings | None = None,
 ) -> LoadResult:
     """Upsert ``payload`` into FalkorDB via GraphRAG-SDK's ``GraphStore``.
 
@@ -321,9 +327,10 @@ async def load_payload(
     from graphrag_sdk import ConnectionConfig, FalkorDBConnection, GraphStore
     from graphrag_sdk.core.models import GraphNode, GraphRelationship
 
-    dimension = _embedding_dimension(embeddings)
-    if embeddings:
-        _validate_embedding_targets(payload, embeddings)
+    dimension = embeddings.dimension if embeddings is not None else None
+    if embeddings is not None:
+        _validate_embedding_targets(payload, embeddings.vectors)
+        _validate_embedding_config(embeddings)
     connection = FalkorDBConnection(
         ConnectionConfig(host=host, port=port, graph_name=graph_name)
     )
@@ -347,8 +354,8 @@ async def load_payload(
         node_count = await store.upsert_nodes(nodes)
         edge_count = await store.upsert_relationships(relationships)
         embedded_count = 0
-        if embeddings:
-            embedded_count = await _write_decision_embeddings(store, embeddings)
+        if embeddings is not None:
+            embedded_count = await _write_decision_embeddings(store, embeddings.vectors)
     finally:
         await connection.close()
     # ``upsert_nodes`` raises on a per-item failure, but ``upsert_relationships``
@@ -551,7 +558,7 @@ async def _create_index(store: Any, cypher: str) -> None:
             raise
 
 
-def _read_embeddings_if_present(snapshot_dir: str | Path) -> dict[int, list[float]] | None:
+def _read_embeddings_if_present(snapshot_dir: str | Path) -> DecisionEmbeddings | None:
     """Read the committed decision embeddings, or ``None`` when absent."""
     from ingest.embeddings import EMBEDDINGS_FILENAME, read_decision_embeddings
 
@@ -559,14 +566,28 @@ def _read_embeddings_if_present(snapshot_dir: str | Path) -> dict[int, list[floa
     return read_decision_embeddings(path) if path.exists() else None
 
 
-def _embedding_dimension(embeddings: Mapping[int, list[float]] | None) -> int | None:
-    """The single vector length across ``embeddings``; ``None`` when absent."""
-    if not embeddings:
-        return None
-    dimensions = {len(vector) for vector in embeddings.values()}
-    if len(dimensions) != 1 or 0 in dimensions:
-        raise ValueError(f"embeddings must share one non-zero dimension, got {sorted(dimensions)}")
-    return dimensions.pop()
+def _validate_embedding_config(embeddings: DecisionEmbeddings) -> None:
+    """Refuse an artifact whose embedder disagrees with the query embedder.
+
+    The committed vectors record the model slug and dimension that produced
+    them; the query side embeds with ``EMBEDDING_MODEL_SLUG`` /
+    ``EMBEDDING_DIMENSION``. A dimension mismatch makes every vector query fail
+    against the index; a same-dimension mismatch compares vectors from two
+    spaces and returns wrong neighbours with no error. Both are caught here,
+    before the index is built.
+    """
+    from api import llm
+
+    expected_model = llm.embedding_model_slug()
+    expected_dimension = llm.embedding_dimension()
+    if embeddings.model != expected_model or embeddings.dimension != expected_dimension:
+        raise ValueError(
+            "decision embeddings were built with "
+            f"model={embeddings.model!r} dimension={embeddings.dimension}, but the "
+            f"query embedder is configured for model={expected_model!r} "
+            f"dimension={expected_dimension}; rebuild the artifact or align "
+            "EMBEDDING_MODEL_SLUG/EMBEDDING_DIMENSION"
+        )
 
 
 def _validate_embedding_targets(

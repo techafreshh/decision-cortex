@@ -140,6 +140,14 @@ def test_vector_seed_skipped_when_no_embedder() -> None:
     assert result.candidate_count == 1
 
 
+def test_default_embedder_resolves_from_the_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    assert retrieval._resolve_embedder(None) is llm.embed_query
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "")
+    assert retrieval._resolve_embedder(None) is None
+
+
 def test_vector_seed_used_and_merged_with_fulltext() -> None:
     reader = FakeReader(vector=[("rfc:200", 0.0)], fulltext=[("rfc:200", 5.0)])
 

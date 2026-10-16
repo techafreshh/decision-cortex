@@ -14,7 +14,7 @@ reads:
 | `rfcs.jsonl` | pull request (RFC) | `rfc`, `title`, `status`, `proposed_on`, `decided_on`, `supersedes_rfc`, `author`, `url`, `labels`, `body`, `content` (markdown, or `null`) |
 | `pr-comments.jsonl` | PR conversation comment | `pr_id`, `comment_id`, `author`, `ts`, `body`, `url`, `truncated` |
 | `commits.jsonl` | commit touching an RFC text file | `sha`, `rfc`, `ts`, `message`, `url` |
-| `decision-embeddings.jsonl` | RFC embedding | `rfc`, `vector` (float array) |
+| `decision-embeddings.jsonl` | embedder metadata (first line), then one RFC embedding per line | metadata: `model`, `dimension`; vectors: `rfc`, `vector` (float array) |
 
 The three harvest record shapes are pinned by the validators in
 [`ingest/snapshot_pipeline.py`](../ingest/snapshot_pipeline.py) and exercised by
@@ -52,11 +52,14 @@ OPENROUTER_API_KEY=<key> python -m ingest.embeddings
 
 Each RFC's title plus a bounded prefix of its markdown is embedded with
 `openai/text-embedding-3-small` (1536 dims by default; override with
-`EMBEDDING_MODEL_SLUG`/`EMBEDDING_DIMENSION`). The vectors are committed so the
-loader can stamp them onto `Decision` nodes and build the FalkorDB vector index
-with no LLM call at seed time — keeping CI at zero LLM calls and judge replay
-at ≈ $0. The loader treats the file as optional: without it there is no vector
-index and retrieval falls back to full-text plus traversal.
+`EMBEDDING_MODEL_SLUG`/`EMBEDDING_DIMENSION`). The file's first line records the
+`model` and `dimension` that produced the vectors, so the loader can refuse an
+artifact that does not match the query embedder's configuration (see
+`docs/graph-schema-notes.md`). The vectors are committed so the loader can stamp
+them onto `Decision` nodes and build the FalkorDB vector index with no LLM call
+at seed time — keeping CI at zero LLM calls and judge replay at ≈ $0. The loader
+treats the file as optional: without it there is no vector index and retrieval
+falls back to full-text plus traversal.
 
 ## PAT scope
 

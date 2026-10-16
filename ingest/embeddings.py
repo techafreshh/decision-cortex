@@ -4,9 +4,13 @@ This is the one-time event-time step that gives the retrieval vector seed its
 foundation. Each RFC's title plus a bounded prefix of its markdown is embedded
 with the OpenRouter embeddings endpoint — the same slug the app embeds queries
 with — and the vectors are committed as ``snapshot/decision-embeddings.jsonl``.
-Embeddings are committed data, exactly like the rest of the snapshot, so the
-loader stamps them onto ``Decision`` nodes and builds the FalkorDB vector index
-without an LLM call: automated CI and judge replay stay at zero model cost.
+The file's first line records the embedding model slug and dimension that
+produced the vectors, so the loader can prove they match the query embedder
+before building the vector index (a mismatch would search one space with
+another's vectors). Embeddings are committed data, exactly like the rest of the
+snapshot, so the loader stamps them onto ``Decision`` nodes and builds the
+FalkorDB vector index without an LLM call: automated CI and judge replay stay at
+zero model cost.
 
 Everything except :func:`main` is pure and takes an injected embedder, so the
 transforms are tested offline with no network and no key.
@@ -18,6 +22,7 @@ import argparse
 import json
 import os
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +34,34 @@ CONTENT_CHAR_LIMIT = 2_000
 BATCH_SIZE = 64
 
 EMBEDDINGS_FILENAME = "decision-embeddings.jsonl"
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionEmbeddings:
+    """The committed vector artifact: its embedder identity plus the vectors.
+
+    The model slug and dimension are recorded alongside the vectors because the
+    vectors alone cannot reveal which embedding space produced them. The loader
+    compares both against the query embedder's configuration, so a mismatch is a
+    loud failure instead of a crash or silently wrong neighbours. Every vector
+    must be ``dimension`` long.
+    """
+
+    model: str
+    dimension: int
+    vectors: Mapping[int, list[float]]
+
+    def __post_init__(self) -> None:
+        if not self.model:
+            raise ValueError("decision embeddings must record the embedding model slug")
+        if self.dimension < 1:
+            raise ValueError(f"embedding dimension must be positive, got {self.dimension}")
+        lengths = {len(vector) for vector in self.vectors.values()}
+        if lengths - {self.dimension}:
+            raise ValueError(
+                f"embedding vectors must all be {self.dimension}-dimensional, "
+                f"got lengths {sorted(lengths)}"
+            )
 
 
 def decision_search_text(record: Mapping[str, Any]) -> str:
@@ -78,32 +111,51 @@ def write_decision_embeddings(
     snapshot_dir: str | Path,
     *,
     embed: Callable[[list[str]], list[list[float]]],
+    model: str,
     dimension: int,
     out: str | Path | None = None,
 ) -> int:
     """Read ``rfcs.jsonl``, embed it, and write the committed vector file.
 
-    Returns the number of vectors written. The caller supplies the real
-    embedder; this function never touches the network itself.
+    The first line is a metadata row carrying ``model`` and ``dimension``; each
+    following line is a ``{"rfc", "vector"}`` row. Returns the number of vectors
+    written. The caller supplies the real embedder; this function never touches
+    the network itself.
     """
     directory = Path(snapshot_dir)
     records = snapshot_pipeline.read_jsonl(directory / "rfcs.jsonl")
     rows = build_decision_embeddings(records, embed=embed, dimension=dimension)
 
     target = Path(out) if out is not None else directory / EMBEDDINGS_FILENAME
-    rendered = "".join(
+    metadata = json.dumps(
+        {"model": model, "dimension": dimension}, separators=(",", ":")
+    )
+    rendered = metadata + "\n" + "".join(
         json.dumps(row, separators=(",", ":")) + "\n" for row in rows
     )
     target.write_text(rendered, encoding="utf-8")
     return len(rows)
 
 
-def read_decision_embeddings(path: str | Path) -> dict[int, list[float]]:
-    """Read a decision-embeddings file into ``rfc -> vector``."""
-    return {
+def read_decision_embeddings(path: str | Path) -> DecisionEmbeddings:
+    """Read a decision-embeddings file into its model, dimension, and vectors."""
+    records = snapshot_pipeline.read_jsonl(path)
+    if not records:
+        raise ValueError(f"{path}: decision embeddings file has no metadata row")
+    metadata, vector_records = records[0], records[1:]
+    try:
+        model = str(metadata["model"])
+        dimension = int(metadata["dimension"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{path}: first line must be an embedding metadata row "
+            "with 'model' and 'dimension'"
+        ) from exc
+    vectors = {
         int(record["rfc"]): [float(value) for value in record["vector"]]
-        for record in snapshot_pipeline.read_jsonl(path)
+        for record in vector_records
     }
+    return DecisionEmbeddings(model=model, dimension=dimension, vectors=vectors)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -133,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     count = write_decision_embeddings(
         args.snapshot_dir,
         embed=llm.embed_documents,
+        model=llm.embedding_model_slug(),
         dimension=llm.embedding_dimension(),
         out=target,
     )

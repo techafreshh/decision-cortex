@@ -198,7 +198,8 @@ def _model_slug(env_var: str) -> str:
     return os.environ.get(env_var, "").strip() or FALLBACK_MODEL_SLUG
 
 
-def _embedding_model_slug() -> str:
+def embedding_model_slug() -> str:
+    """The configured embedding model slug (``EMBEDDING_MODEL_SLUG`` or default)."""
     return os.environ.get("EMBEDDING_MODEL_SLUG", "").strip() or DEFAULT_EMBEDDING_MODEL_SLUG
 
 
@@ -481,7 +482,7 @@ def _embedding_vectors(model: str, data: dict[str, object]) -> list[list[float]]
 
 def _request_embeddings(texts: Sequence[str]) -> tuple[list[list[float]], int, float]:
     _enforce_spend_cap()
-    model = _embedding_model_slug()
+    model = embedding_model_slug()
     dimension = embedding_dimension()
     payload: dict[str, object] = {
         "model": model,

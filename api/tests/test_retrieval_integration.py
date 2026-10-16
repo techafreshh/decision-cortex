@@ -18,6 +18,7 @@ import pytest
 
 from api import llm, retrieval, router
 from ingest import graph
+from ingest.embeddings import DecisionEmbeddings
 
 FIXTURE = Path(__file__).resolve().parents[2] / "ingest" / "tests" / "fixtures" / "phase1"
 GRAPH_NAME = "dc_retrieval_integration"
@@ -94,15 +95,20 @@ def test_vector_seed_finds_the_nearest_decision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "")
+    monkeypatch.setenv("EMBEDDING_DIMENSION", "4")
     host, port = _target()
     _reset(host, port)
     payload = graph.payload_from_snapshot(FIXTURE)
     graph.validate_payload(payload)
-    embeddings = {
-        100: [1.0, 0.0, 0.0, 0.0],
-        200: [0.0, 1.0, 0.0, 0.0],
-        300: [0.0, 0.0, 1.0, 0.0],
-    }
+    embeddings = DecisionEmbeddings(
+        model=llm.embedding_model_slug(),
+        dimension=4,
+        vectors={
+            100: [1.0, 0.0, 0.0, 0.0],
+            200: [0.0, 1.0, 0.0, 0.0],
+            300: [0.0, 0.0, 1.0, 0.0],
+        },
+    )
     asyncio.run(
         graph.load_payload(
             payload, host=host, port=port, graph_name=GRAPH_NAME, embeddings=embeddings

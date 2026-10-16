@@ -86,12 +86,52 @@ def test_write_then_read_round_trips(tmp_path: Path) -> None:
     )
 
     written = embeddings.write_decision_embeddings(
-        snapshot, embed=FakeEmbed(dimension=2), dimension=2
+        snapshot, embed=FakeEmbed(dimension=2), model="test/model", dimension=2
     )
     read_back = embeddings.read_decision_embeddings(
         snapshot / embeddings.EMBEDDINGS_FILENAME
     )
 
     assert written == 2
-    assert set(read_back) == {1, 2}
-    assert all(len(vector) == 2 for vector in read_back.values())
+    assert read_back.model == "test/model"
+    assert read_back.dimension == 2
+    assert set(read_back.vectors) == {1, 2}
+    assert all(len(vector) == 2 for vector in read_back.vectors.values())
+
+
+def test_write_records_the_metadata_row_first(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    (snapshot / "rfcs.jsonl").write_text(
+        json.dumps(_record(1, title="r1")) + "\n", encoding="utf-8"
+    )
+
+    embeddings.write_decision_embeddings(
+        snapshot, embed=FakeEmbed(dimension=2), model="test/model", dimension=2
+    )
+
+    first_line = (snapshot / embeddings.EMBEDDINGS_FILENAME).read_text(
+        encoding="utf-8"
+    ).split("\n")[0]
+    assert json.loads(first_line) == {"model": "test/model", "dimension": 2}
+
+
+def test_read_rejects_a_missing_metadata_row(tmp_path: Path) -> None:
+    path = tmp_path / "decision-embeddings.jsonl"
+    path.write_text('{"rfc":1,"vector":[0.1,0.2]}\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="metadata row"):
+        embeddings.read_decision_embeddings(path)
+
+
+def test_read_rejects_a_vector_length_that_disagrees_with_the_metadata(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "decision-embeddings.jsonl"
+    path.write_text(
+        '{"model":"m","dimension":3}\n{"rfc":1,"vector":[0.1,0.2]}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="3-dimensional"):
+        embeddings.read_decision_embeddings(path)
