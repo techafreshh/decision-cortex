@@ -191,7 +191,7 @@ Agent core (FastAPI):
 
 ### 6.2 Key patterns
 
-- **System 1 / System 2 separation.** All typing/classification/rating work runs on the cheap decision model (`decide()`); only synthesis, impact narratives, and no-record verdicts run on the frontier reasoner (`reason()`). Escalation: S1 confidence < threshold → S2 handles that step. Every decision call lands in the ledger; retrieval embeddings record their cost/latency on the retrieval row.
+- **System 1 / System 2 separation.** All typing/classification/rating work runs on the cheap decision model (`decide()`); only synthesis, impact narratives, and no-record verdicts run on the frontier reasoner (`reason()`). Escalation: S1 confidence < threshold → S2 handles that step. Every decision call lands in the ledger; a query embedding records its cost/latency on the retrieval row (document embeddings are the one-time ingestion step, not ledger rows).
 - **Ontology-constrained extraction.** GraphRAG-SDK's `GraphSchema`/`EntityType`/`RelationType` constrain what gets extracted; `grounded_answers_with_abstention` is a *shipping SDK example* we adapt — abstention is the vendor's own pattern (cite it), not a custom hack.
 - **Claim gate = the citation mechanism.** S2 emits sentence-by-sentence; per sentence, `decide()` maps it to evidence nodes (y/n + confidence). Uncited sentences are flagged; uncited key claims trigger abstention. The gate *is* the provenance path to the chips.
 - **Retrieval = graph-native.** Vector seed + full-text + multi-hop traversal in FalkorDB. Text-to-Cypher (SDK experimental) is a display flourish (CypherPeek), never the backbone.

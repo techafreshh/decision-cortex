@@ -34,19 +34,34 @@ class Route(StrEnum):
 
 ROUTE_LABELS: tuple[str, ...] = tuple(route.value for route in Route)
 
+#: One-line prompt description per route. Building the prompt from this mapping
+#: keeps the route set single-sourced on ``Route``: adding a route without a
+#: description raises here instead of quietly describing a stale set.
+_ROUTE_DESCRIPTIONS: dict[Route, str] = {
+    Route.FACT: (
+        "its answer is stated in an RFC's own text, title, or status "
+        "(for example which RFC introduced a language feature)."
+    ),
+    Route.DECISION_PROVENANCE: (
+        "it asks to trace a decision to its source — who decided, who objected "
+        "or supported, or what discussion or commit evidences it."
+    ),
+    Route.IMPACT: (
+        "it asks what a decision touches, depends on, or would affect if "
+        "revisited — its blast radius across related decisions, areas, and teams."
+    ),
+    Route.OUT_OF_GRAPH: (
+        "it cannot be answered from the rust-lang/rfcs decision graph "
+        "(a different project, an opinion, or a topic the corpus never decided)."
+    ),
+}
+
 _ROUTER_PROMPT = (
     "You route questions about the rust-lang/rfcs decision corpus, a graph of "
     "RFC decisions, the people who proposed them, the discussion comments that "
     "evidenced them, and the decisions they supersede.\n"
     "Classify the question into exactly one route:\n"
-    "- fact: its answer is stated in an RFC's own text, title, or status "
-    "(for example which RFC introduced a language feature).\n"
-    "- decision-provenance: it asks to trace a decision to its source — who "
-    "decided, who objected or supported, or what discussion or commit evidences it.\n"
-    "- impact: it asks what a decision touches, depends on, or would affect if "
-    "revisited — its blast radius across related decisions, areas, and teams.\n"
-    "- out-of-graph: it cannot be answered from the rust-lang/rfcs decision "
-    "graph (a different project, an opinion, or a topic the corpus never decided).\n"
+    + "".join(f"- {route.value}: {_ROUTE_DESCRIPTIONS[route]}\n" for route in Route)
 )
 
 

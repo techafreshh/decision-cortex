@@ -54,9 +54,10 @@ their content is fully consolidated into the PRD and this file.)
   System-1 outputs: 1-of-N / 0–5 / y-n + calibrated confidence) and `reason()`
   (System-2 synthesis). Escalation: S1 confidence < threshold → S2. Every
   *decision* call lands in the **decision ledger** (input digest, choice,
-  confidence, model, latency, cost, escalated flag); the third call surface,
-  retrieval embeddings (`embed_documents()` / `embed_query()`), records its cost
-  and latency on the retrieval layer's own row instead. S1 slug is TBD at build;
+  confidence, model, latency, cost, escalated flag). The retrieval embeddings
+  (`embed_documents()` / `embed_query()`) are not ledger rows: document
+  embeddings are the one-time ingestion step, and a query embedding records its
+  cost and latency on the retrieval layer's own row. S1 slug is TBD at build;
   the **default config is the small-model strict-JSON fallback** behind the same
   interface.
 - **App language: Python** (FastAPI). FalkorDB 6.x is the graph. Rust/Go only

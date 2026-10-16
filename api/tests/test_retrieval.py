@@ -247,6 +247,41 @@ def test_retrieve_evidence_appends_one_ledger_record(monkeypatch: pytest.MonkeyP
     assert row.escalated is False
 
 
+def test_retrieval_ledger_row_carries_the_query_embedding_trace() -> None:
+    reader = FakeReader(fulltext=[("rfc:200", 3.0)])
+
+    retrieval.retrieve_evidence(
+        "trait objects",
+        "decision-provenance",
+        reader=reader,
+        embedder=fake_embedder([0.1, 0.2]),
+        decide_fn=decide(True),
+        max_rounds=0,
+    )
+
+    rows = [record for record in llm.ledger_records() if record.model == "retrieval:graph-native"]
+    assert len(rows) == 1
+    assert rows[0].latency_ms == 5
+    assert rows[0].cost_usd == 0.0001
+
+
+def test_vector_query_failure_that_is_not_a_missing_index_raises() -> None:
+    reader = FakeReader(
+        fulltext=[("rfc:200", 3.0)],
+        vector_error=RuntimeError("connection refused"),
+    )
+
+    with pytest.raises(RuntimeError, match="connection refused"):
+        retrieval.retrieve_evidence(
+            "trait objects",
+            "decision-provenance",
+            reader=reader,
+            embedder=fake_embedder([0.1, 0.2]),
+            decide_fn=decide(True),
+            max_rounds=0,
+        )
+
+
 def test_fulltext_terms_drop_stopwords_and_dedupe() -> None:
     terms = retrieval._fulltext_terms(
         "What did the language team decide about trait objects, and who objected?"

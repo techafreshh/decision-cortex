@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
-from api import llm, retrieval
+from api import llm, retrieval, router
 from ingest import graph
 
 FIXTURE = Path(__file__).resolve().parents[2] / "ingest" / "tests" / "fixtures" / "phase1"
@@ -45,6 +46,12 @@ def _sufficient(_prompt: str, *, yes_no: bool) -> llm.DecideResult[bool]:
     return llm.DecideResult(choice=False, confidence=0.9, escalated=False)
 
 
+def _route_decision_provenance(
+    _prompt: str, *, one_of: Sequence[str]
+) -> llm.DecideResult[str]:
+    return llm.DecideResult(choice="decision-provenance", confidence=0.9, escalated=False)
+
+
 def test_decision_provenance_question_retrieves_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -58,9 +65,11 @@ def test_decision_provenance_question_retrieves_evidence(
     reader = retrieval.FalkorDBGraphReader(
         host=host, port=port, graph_name=GRAPH_NAME
     )
+    route = router.router_classify(QUESTION, decide_fn=_route_decision_provenance)
+    assert route.label == "decision-provenance"
     result = retrieval.retrieve_evidence(
         QUESTION,
-        "decision-provenance",
+        route.label,
         reader=reader,
         embedder=None,
         decide_fn=_sufficient,
