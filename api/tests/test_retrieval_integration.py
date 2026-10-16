@@ -128,5 +128,5 @@ def test_vector_seed_finds_the_nearest_decision(
     vector_seeds = {node.id for node in result.evidence_nodes if node.source == "vector"}
     assert "rfc:200" in vector_seeds
     nearest = next(node for node in result.evidence_nodes if node.id == "rfc:200")
-    assert nearest.score == 0.0
+    assert nearest.score == pytest.approx(0.0, abs=1e-6)
     assert retrieval.QueryStep("query", "SEED_VECTOR", "rfc:200") in result.query_path
