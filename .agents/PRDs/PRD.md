@@ -281,10 +281,12 @@ Read-peephole using `@falkordb/mcpserver`: list node labels/relations, run read-
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `OPENROUTER_API_KEY` | Yes (runtime) | S1 + S2 calls; **dedicated per-deploy key, hard spend cap: $10** |
+| `OPENROUTER_API_KEY` | Yes (runtime) | S1 + S2 calls and retrieval embeddings; **dedicated per-deploy key, hard spend cap: $10** |
 | `GITHUB_TOKEN` | No (runtime) | Free GitHub PAT for the one-time snapshot pull and *refresh only* — the snapshot ships committed, so judge runs need no token |
 | `DECIDE_MODEL_SLUG` | No | OpenRouter slug for S1; default = fallback small model (strict JSON) until pinned |
 | `REASON_MODEL_SLUG` | No | OpenRouter slug for S2 |
+| `EMBEDDING_MODEL_SLUG` | No | OpenRouter slug for retrieval embeddings; default `openai/text-embedding-3-small`. Must match the committed `snapshot/decision-embeddings.jsonl` (§15.3) |
+| `EMBEDDING_DIMENSION` | No | Retrieval embedding dimension; default 1536. Must match the committed artifact and the FalkorDB vector index (§15.3) |
 | `SPEND_CAP_USD` | No | Hard-stop guard + ledger alerting (default 10) |
 | `DB_FALKORDB_URL` etc. | No | Compose-internal defaults |
 

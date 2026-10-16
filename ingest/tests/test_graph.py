@@ -358,7 +358,10 @@ def test_load_payload_writes_embeddings_and_retrieval_indexes(
     statements = [cypher for cypher, _ in calls]
     assert "CREATE FULLTEXT INDEX FOR (n:Decision) ON (n.title)" in statements
     assert any(
-        "CREATE VECTOR INDEX" in cypher and "dimension:3" in cypher for cypher in statements
+        "CREATE VECTOR INDEX" in cypher
+        and "dimension:3" in cypher
+        and "similarityFunction:'cosine'" in cypher
+        for cypher in statements
     )
     embedding_writes = [
         params

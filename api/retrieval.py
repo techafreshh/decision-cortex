@@ -46,6 +46,8 @@ _OUT_RELATIONS = (
 )
 #: §15.3 relations whose target is the Decision (stance edges plus supersession).
 _IN_RELATIONS = ("OBJECTED", "SUPPORTED", "MODERATED", "SUPERSEDES")
+#: Query-path relations marking a seed node rather than a traversed §15.3 edge.
+_SEED_RELATIONS = ("SEED_VECTOR", "SEED_FULLTEXT")
 
 _OUT_QUERY = (
     "MATCH (d:Decision)-[r]->(n) "
@@ -180,12 +182,33 @@ class FalkorDBGraphReader:
         return [list(row) for row in result.result_set]
 
 
-def connect_from_env() -> FalkorDBGraphReader:
-    """Build a reader from ``FALKORDB_HOST``/``FALKORDB_PORT``/``FALKORDB_GRAPH``."""
-    return FalkorDBGraphReader(
+@dataclass(frozen=True, slots=True)
+class FalkorDBConnection:
+    """The FalkorDB endpoint resolved from the environment."""
+
+    host: str
+    port: int
+    graph_name: str
+
+
+def connection_from_env() -> FalkorDBConnection:
+    """Resolve the endpoint from ``FALKORDB_HOST``/``FALKORDB_PORT``/``FALKORDB_GRAPH``.
+
+    The single declaration of these defaults: ``ingest.graph`` imports this so
+    the loader and the retrieval reader can never point at different graphs.
+    """
+    return FalkorDBConnection(
         host=os.environ.get("FALKORDB_HOST", "localhost"),
         port=int(os.environ.get("FALKORDB_PORT", "6379")),
         graph_name=os.environ.get("FALKORDB_GRAPH", "decision_cortex"),
+    )
+
+
+def connect_from_env() -> FalkorDBGraphReader:
+    """Build a reader over the environment-resolved endpoint."""
+    connection = connection_from_env()
+    return FalkorDBGraphReader(
+        host=connection.host, port=connection.port, graph_name=connection.graph_name
     )
 
 
@@ -210,7 +233,6 @@ def retrieve_evidence(
 
     evidence: dict[str, EvidenceNode] = {}
     path: list[QueryStep] = []
-    seed_count = 0
     embed_latency_ms = 0
     embed_cost_usd = 0.0
 
@@ -222,13 +244,11 @@ def retrieve_evidence(
             if node.id not in evidence:
                 evidence[node.id] = node
                 path.append(QueryStep("query", "SEED_VECTOR", node.id))
-                seed_count += 1
 
     for node in _fulltext_seed(active_reader, question, top_k):
         if node.id not in evidence:
             evidence[node.id] = node
             path.append(QueryStep("query", "SEED_FULLTEXT", node.id))
-            seed_count += 1
 
     frontier = [node.id for node in evidence.values() if node.label == "Decision"]
     rounds = 0
@@ -243,7 +263,7 @@ def retrieve_evidence(
         rounds = round_index
         frontier = next_frontier
         if sufficiency_stop(
-            _sufficiency_facts(question, route, evidence, path, seed_count, round_index, max_rounds),
+            _sufficiency_facts(question, route, evidence, path, round_index, max_rounds),
             decide_fn=decide_fn,
         ):
             stopped_early = True
@@ -383,7 +403,6 @@ def _sufficiency_facts(
     route: str,
     evidence: Mapping[str, EvidenceNode],
     path: Sequence[QueryStep],
-    seed_count: int,
     round_index: int,
     max_rounds: int,
 ) -> SufficiencyFacts:
@@ -394,15 +413,14 @@ def _sufficiency_facts(
         decision_count=sum(1 for node in evidence.values() if node.label == "Decision"),
         evidence_type_counts=_relation_counts(path),
         top_score=_top_seed_score(evidence),
-        seed_count=seed_count,
+        seed_count=sum(1 for step in path if step.relation in _SEED_RELATIONS),
         round_index=round_index,
         max_rounds=max_rounds,
     )
 
 
 def _relation_counts(path: Sequence[QueryStep]) -> dict[str, int]:
-    seed_relations = ("SEED_VECTOR", "SEED_FULLTEXT")
-    counts = Counter(step.relation for step in path if step.relation not in seed_relations)
+    counts = Counter(step.relation for step in path if step.relation not in _SEED_RELATIONS)
     return dict(sorted(counts.items()))
 
 

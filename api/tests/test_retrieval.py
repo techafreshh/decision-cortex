@@ -124,6 +124,21 @@ def test_fulltext_seed_and_expansion_build_evidence_and_path() -> None:
     assert not reader.called("vector.queryNodes")
 
 
+def test_fulltext_seed_respects_top_k_and_ranks_by_score() -> None:
+    reader = FakeReader(fulltext=[("rfc:1", 1.0), ("rfc:2", 5.0), ("rfc:3", 3.0)])
+
+    result = retrieval.retrieve_evidence(
+        "trait objects",
+        "decision-provenance",
+        reader=reader,
+        decide_fn=decide(False),
+        max_rounds=0,
+        top_k=2,
+    )
+
+    assert {node.id for node in result.evidence_nodes} == {"rfc:2", "rfc:3"}
+
+
 def test_vector_seed_skipped_when_no_embedder() -> None:
     reader = FakeReader(fulltext=[("rfc:200", 3.0)])
 
@@ -317,6 +332,47 @@ def test_fulltext_terms_drop_stopwords_and_dedupe() -> None:
     )
 
     assert terms == ["language", "team", "decide", "about", "trait", "objects", "objected"]
+
+
+def test_sufficiency_facts_reduce_the_gathered_graph() -> None:
+    evidence = {
+        "rfc:200": retrieval.EvidenceNode(
+            id="rfc:200", label="Decision", properties={}, source="vector", score=0.25
+        ),
+        "rfc:100": retrieval.EvidenceNode(
+            id="rfc:100", label="Decision", properties={}, source="fulltext", score=0.4
+        ),
+        "person:bob": retrieval.EvidenceNode(
+            id="person:bob", label="Person", properties={}, source="traversal", score=None
+        ),
+    }
+    path = [
+        retrieval.QueryStep("query", "SEED_VECTOR", "rfc:200"),
+        retrieval.QueryStep("query", "SEED_FULLTEXT", "rfc:100"),
+        retrieval.QueryStep("person:bob", "OBJECTED", "rfc:200"),
+    ]
+
+    facts = retrieval._sufficiency_facts("q", "decision-provenance", evidence, path, 1, 2)
+
+    assert facts.candidate_count == 3
+    assert facts.decision_count == 2
+    assert facts.evidence_type_counts == {"OBJECTED": 1}
+    assert facts.top_score == pytest.approx(0.75)
+    assert facts.seed_count == 2
+
+
+def test_connection_from_env_reads_the_falkordb_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FALKORDB_HOST", "graph.internal")
+    monkeypatch.setenv("FALKORDB_PORT", "7000")
+    monkeypatch.setenv("FALKORDB_GRAPH", "cortex")
+
+    connection = retrieval.connection_from_env()
+
+    assert connection == retrieval.FalkorDBConnection(
+        host="graph.internal", port=7000, graph_name="cortex"
+    )
 
 
 def test_sufficiency_stop_returns_the_boolean_choice() -> None:

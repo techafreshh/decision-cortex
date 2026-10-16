@@ -40,7 +40,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
-import os
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -408,12 +407,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    from api.retrieval import connection_from_env
+
+    connection = connection_from_env()
     result = asyncio.run(
         ingest_snapshot(
             args.snapshot_dir,
-            host=os.environ.get("FALKORDB_HOST", "localhost"),
-            port=int(os.environ.get("FALKORDB_PORT", "6379")),
-            graph_name=os.environ.get("FALKORDB_GRAPH", "decision_cortex"),
+            host=connection.host,
+            port=connection.port,
+            graph_name=connection.graph_name,
         )
     )
     print(
