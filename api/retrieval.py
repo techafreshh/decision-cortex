@@ -135,11 +135,21 @@ _DISPLAY_PROPERTIES: dict[str, str] = {
 }
 
 
+def display_name(label: str, properties: Mapping[str, Any]) -> str:
+    """The display property for ``label``, or ``""`` when the node has none.
+
+    The graph schema declares a different display property per label
+    (:data:`_DISPLAY_PROPERTIES`); callers that hold a label and properties but
+    not an :class:`EvidenceNode` (e.g. the impact walk) share this lookup.
+    """
+    property_name = _DISPLAY_PROPERTIES.get(label)
+    value = properties.get(property_name) if property_name else None
+    return str(value) if value else ""
+
+
 def node_title(node: EvidenceNode) -> str:
     """The node's human-readable title, falling back to its id."""
-    property_name = _DISPLAY_PROPERTIES.get(node.label)
-    value = node.properties.get(property_name) if property_name else None
-    return str(value) if value else node.id
+    return display_name(node.label, node.properties) or node.id
 
 
 def evidence_line(node: EvidenceNode) -> str:
@@ -396,7 +406,7 @@ def _expand(
 
 
 def _traversal_node(nodes: dict[str, EvidenceNode], value: Any) -> EvidenceNode:
-    node_id, label, properties = _coerce_node(value)
+    node_id, label, properties = coerce_node(value)
     existing = nodes.get(node_id)
     if existing is not None:
         return existing
@@ -408,13 +418,13 @@ def _traversal_node(nodes: dict[str, EvidenceNode], value: Any) -> EvidenceNode:
 
 
 def _evidence_from_row(row: Sequence[Any], *, source: str, score: float | None) -> EvidenceNode:
-    node_id, label, properties = _coerce_node(row[0])
+    node_id, label, properties = coerce_node(row[0])
     return EvidenceNode(
         id=node_id, label=label, properties=properties, source=source, score=score
     )
 
 
-def _coerce_node(value: Any) -> tuple[str, str, dict[str, Any]]:
+def coerce_node(value: Any) -> tuple[str, str, dict[str, Any]]:
     """Return ``(id, label, properties)`` for a driver Node or a test mapping."""
     if isinstance(value, Mapping):
         properties = dict(value.get("properties", value))

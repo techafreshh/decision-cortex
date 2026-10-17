@@ -64,14 +64,14 @@ The core value proposition has three parts. **(a) Provenance by construction:** 
 - [ ] Q&A over the RFC corpus with **claim-level citations**: sentence-by-sentence answers, each sentence mapped to evidence nodes by the claim↔evidence gate; uncited sentences visually flagged
 - [ ] **Citation chips → SourcePanel**: every chip opens the source's graph metadata (author, date, stance) and deep-links out to the RFC, the GitHub comment, or the commit (the graph stores refs, never bodies — §10)
 - [ ] **Principled abstention**: if key claims go uncited → answer abstains ("no record supports that — here's what the record does contain") with the `NoRecordCard` receipts (searched N nodes, M evidence chains, 0 matches) and the "proposals that came close" trail
-- [ ] **Impact Explorer**: click any Decision/Concept/Person → dependent subgraph blooms (React Flow); edges labeled by evidence type; hover-focus beat
-- [ ] **Timeline**: decisions over time with supersede arrows and loudest-voice stances; scripted "async/await lifecycle story" tour
+- [x] **Impact Explorer**: click any Decision/Concept/Person → dependent subgraph blooms (React Flow); edges labeled by evidence type; hover-focus beat
+- [x] **Timeline**: decisions over time with supersede arrows and loudest-voice stances; scripted "async/await lifecycle story" tour
 - [ ] **Faithfulness badge**: RAGAS faithfulness (HHEM-2.1-Open, local CPU) scored per answer → "faithfulness 1.0 · 8/8 claims cited"
 - [ ] **Verification-set buttons**: "Ask the corpus", "Prove the negative", "Impact tour", "The async/await story" — scripted, deterministic, first
 - [ ] **Show-your-work strip** on every answer: router class → retrieval mode → evidence count → faithfulness (collapsible)
 - [ ] **CypherPeek**: collapsible panel showing generated Cypher (display flourish only)
 - [ ] Free-text search box over the corpus (after scripted buttons)
-- [ ] **Exports**: Markdown report + JSON graph dump ("your company brain, portable")
+- [x] **Exports**: Markdown report + JSON graph dump ("your company brain, portable")
 
 **Data & graph**
 - [ ] **One-time RFC snapshot** via GitHub REST (free PAT, ≤ 5,000 req/h): RFC markdown files, PR review comments (first ~100 per PR; retained honestly as `:Message {truncated: bool}`), commit history per RFC file → JSONL committed in-repo
@@ -359,7 +359,7 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 - [ ] Live URL with the verification-set buttons + free search
 - [ ] Every answer chip-deep-links to real sources (RFC text, comment, commit)
 - [ ] Abstention moment with receipts works (NoRecordCard + "came close" trail)
-- [ ] Impact Explorer + Timeline functional (real RFC numbers on supersede chains)
+- [x] Impact Explorer + Timeline functional (real RFC numbers on supersede chains)
 - [ ] Faithfulness badge real (HHEM-2.1-Open, local)
 - [ ] 4-min video (+ backup footage) featuring the negative-proof beat
 - [ ] README with MADR/Graphiti/ARE positioning + snapshot methodology
@@ -428,7 +428,7 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 **Goal:** All three product surfaces done; live on the VPS; rehearsed.
 
 **Deliverables:**
-- [ ] Impact Explorer (React Flow, evidence-typed edges) + Timeline (supersede arrows, async/await scripted tour) + exports (MD + JSON dump)
+- [x] Impact Explorer (React Flow, evidence-typed edges) + Timeline (supersede arrows, async/await scripted tour) + exports (MD + JSON dump)
 - [ ] Agent polish: sufficiency stop, confidence-stamped stance edges with jump-to-evidence
 - [ ] *(Stretch, only if all green)* rust-lang/rust Issues sub-corpus
 - [ ] Deploy to VPS (seed-on-boot, spend-capped key); free-search polishing; landing buttons finalized
