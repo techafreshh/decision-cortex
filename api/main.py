@@ -3,9 +3,9 @@
 Liveness is deliberately decoupled from FalkorDB availability: ``/healthz``
 answers 200 from the process alone, so the API boots (and the verification
 container can probe it) with no database reachable. The seed status is a live
-``Decision`` count (``api.seed.graph_is_seeded``) reported honestly in the body
-instead of gating the response — an unreachable database is ``seeded: false``,
-not a failed probe.
+count of the loaded Decisions and their edges (``api.seed.graph_is_seeded``)
+reported honestly in the body instead of gating the response — an unreachable
+database is ``seeded: false``, not a failed probe.
 
 ``POST /ask`` streams the AG-UI event sequence (PRD §10) as Server-Sent
 Events: ``RUN_STARTED`` → tool-call events → ``TEXT_MESSAGE_CONTENT`` deltas

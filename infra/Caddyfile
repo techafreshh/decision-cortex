@@ -10,7 +10,8 @@
 	# `handle` blocks because Caddy runs `try_files` before `reverse_proxy`: a
 	# bare `try_files {path} /index.html` would rewrite /ask to the SPA shell
 	# before it could be proxied. `handle` blocks are mutually exclusive and
-	# matched in file order, so these win before the catch-all below.
+	# Caddy sorts them by matcher specificity, so these win before the catch-all
+	# below.
 	handle /ask* {
 		reverse_proxy api:8000
 	}

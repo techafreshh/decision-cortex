@@ -29,9 +29,11 @@ curl -fsS http://localhost:8080/healthz   # -> {"status":"ok","seeded":true}
 
 The `api` container command is
 `python -m api.seed && exec uvicorn api.main:app --host 0.0.0.0 --port 8000`.
-`api.seed.seed_if_empty` counts `Decision` nodes and skips the load when the
-graph is already populated, printing `seed-on-boot: graph already seeded`; an
-empty graph is loaded from the committed snapshot and prints
+`api.seed.seed_if_empty` counts `Decision` nodes and their edges and skips the
+load when the graph is already complete, printing
+`seed-on-boot: graph already seeded`; a graph with no Decisions (or Decisions but
+no edges — the loader commits nodes before relationships, so an interrupted boot
+can leave exactly that) is loaded from the committed snapshot and prints
 `seed-on-boot: seeded snapshot`. `uvicorn` is `exec`'d so it owns PID 1 and
 receives stop signals.
 
@@ -67,12 +69,14 @@ image.
 ## `/healthz` reports the real seed state
 
 `GET /healthz` returns exactly `{"status": "ok", "seeded": <bool>}`. `seeded`
-comes from a live `MATCH (d:Decision) RETURN count(d)` through
-`api.seed.graph_is_seeded`; any read failure (including an unreachable database)
-is caught and reported as `seeded: false`, never a crash or a non-200. That
-keeps two things true at once: the probe answers offline (`scripts/run_scenario_api.sh`
-polls `/healthz` with no database), and it tells the truth once a graph is
-present instead of a startup flag that can go stale.
+comes from a live `MATCH (d:Decision) RETURN count(d)` plus
+`MATCH ()-[r]->() RETURN count(r)` through `api.seed.graph_is_seeded`, so a
+partial load (Decisions with no edges) reports `seeded: false` and the next boot
+heals it; any read failure (including an unreachable database) is caught and
+reported as `seeded: false`, never a crash or a non-200. That keeps two things
+true at once: the probe answers offline (`scripts/run_scenario_api.sh` polls
+`/healthz` with no database), and it tells the truth once a graph is present
+instead of a startup flag that can go stale.
 
 ## Caddy routing and the `try_files` ordering pitfall
 
@@ -87,10 +91,11 @@ handle           { root * /srv; try_files {path} /index.html; file_server }
 
 Caddy runs `try_files` **before** `reverse_proxy`, so a bare site-level
 `try_files {path} /index.html` would rewrite `/ask` to the SPA shell before it
-could be proxied. `handle` blocks are mutually exclusive and matched in file
-order, so the API matchers win before the catch-all. The SPA calls relative
-paths (`web/src/api/ask.ts` `fetch('/ask')`, `web/src/api/node.ts` `fetch('/node/…')`),
-so serving both from one origin needs no CORS.
+could be proxied. `handle` blocks are mutually exclusive and Caddy sorts them by
+matcher specificity, so the specific API matchers are evaluated before the
+unmatched catch-all. The SPA calls relative paths (`web/src/api/ask.ts`
+`fetch('/ask')`, `web/src/api/node.ts` `fetch('/node/…')`), so serving both from
+one origin needs no CORS.
 
 `SITE_ADDRESS` defaults to `:80` (plain HTTP, published on host `8080`). Set it
 to a hostname on a VPS and Caddy provisions automatic HTTPS.
@@ -107,6 +112,10 @@ enforces `SPEND_CAP_USD` and the ledger is surfaced live in the UI footer.
 ## Verification
 
 `compose-smoke.yml` boots the stack, polls `/healthz` until `seeded: true`,
-checks Caddy serves the SPA, then restarts `api` and asserts the logs contain
-`graph already seeded` (the guard path, acceptance criterion 5). Locally the
-same steps are the `curl` calls above plus `docker compose restart api`.
+checks Caddy serves the SPA and proxies an API-only route (`/node/__probe__`
+returns the API's 404, not the SPA's 200), then restarts `api` and asserts the
+logs contain `graph already seeded` (the guard path, acceptance criterion 5).
+Locally the same steps are the `curl` calls above plus `docker compose restart api`.
+The route set itself is bound to the app by `api/tests/test_route_contract.py`,
+which fails if an `api.main` route has no Caddy `handle` matcher or Vite proxy
+entry.

@@ -61,6 +61,14 @@ jobs:
               echo "healthz reports a seeded graph after attempt $i: $body"
               # Caddy serves the built SPA, not just the API.
               curl -fsS "${SMOKE_URL}/" | grep -q '<div id="root">'
+              # Caddy proxies an API-only route: an unknown node id returns the
+              # API's JSON 404, while the SPA catch-all would return 200 HTML.
+              code="$(curl -s -o /dev/null -w '%{http_code}' "${SMOKE_URL}/node/__probe__")"
+              if [ "$code" != "404" ]; then
+                echo "Caddy did not proxy /node/* to the API (got HTTP $code)"
+                docker compose -f infra/docker-compose.yml logs --no-color
+                exit 1
+              fi
               exit 0
             fi
             sleep 5

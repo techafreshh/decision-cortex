@@ -72,7 +72,8 @@ their content is fully consolidated into the PRD and this file.)
   so a CopilotKit transport stays additive.
 - **Deployment:** Docker Compose (`falkordb` with volume + `api` + `web`) +
   Caddy HTTPS on the VPS; seed-on-boot; one-command local run
-  (`docker compose up --build` + `.env` with one OpenRouter key).
+  (`docker compose -f infra/docker-compose.yml up --build` + `infra/.env` with
+  one OpenRouter key).
 - **Corpus:** real rust-lang/rfcs data. No synthetic substitutions.
 
 ## Budget doctrine (hard cap: $10 OpenRouter per deploy)
