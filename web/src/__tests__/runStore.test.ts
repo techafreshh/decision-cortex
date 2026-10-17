@@ -88,6 +88,25 @@ describe('reduceRun', () => {
     expect(state.abstention).toEqual(receipt)
   })
 
+  it('leaves abstention null when no card is emitted (cardless ungrounded)', () => {
+    const state = fold([
+      event({ type: 'RUN_STARTED', question: 'q', scenario: null }),
+      event({
+        type: 'TOOL_CALL_START',
+        tool_call_id: 'router_classify',
+        tool_name: 'router_classify',
+      }),
+      event({
+        type: 'TOOL_CALL_RESULT',
+        tool_call_id: 'router_classify',
+        result: { route: 'out_of_graph', confidence: 0.8, escalated: false },
+      }),
+      event({ type: 'RUN_FINISHED', citation_count: 0, claims_total: 0, claims_cited: 0, abstention_required: false, ledger: LEDGER }),
+    ])
+    expect(state.abstention).toBeNull()
+    expect(state.sentences).toEqual([])
+  })
+
   it('accumulates answer sentences in order', () => {
     const state = fold([
       event({ type: 'TEXT_MESSAGE_START', message_id: 'answer' }),
