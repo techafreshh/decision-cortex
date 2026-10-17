@@ -96,10 +96,16 @@ class PipelineDecide:
         *,
         route: str = "decision-provenance",
         gate: str = "e0",
+        gate_choices: list[str] | None = None,
         sufficient: bool = True,
     ) -> None:
         self.route = route
         self.gate = gate
+        #: When set, consumed one entry per claim-gate call (one per sentence),
+        #: so a test can cite some sentences and reject others. The last entry
+        #: repeats if more sentences arrive than choices.
+        self.gate_choices = list(gate_choices) if gate_choices is not None else None
+        self._gate_index = 0
         self.sufficient = sufficient
 
     def __call__(self, prompt: str, *, one_of=None, rating=None, yes_no=None):
@@ -110,7 +116,14 @@ class PipelineDecide:
         assert one_of is not None
         if "out-of-graph" in one_of:
             return llm.DecideResult(choice=self.route, confidence=0.9, escalated=False)
-        return llm.DecideResult(choice=self.gate, confidence=0.9, escalated=False)
+        return llm.DecideResult(choice=self._next_gate(), confidence=0.9, escalated=False)
+
+    def _next_gate(self) -> str:
+        if self.gate_choices is None:
+            return self.gate
+        index = min(self._gate_index, len(self.gate_choices) - 1)
+        self._gate_index += 1
+        return self.gate_choices[index]
 
 
 def completion(content: str, cost: float | None = None) -> dict[str, object]:
@@ -132,12 +145,18 @@ class DispatchOpenRouter:
         *,
         reason_text: str,
         gate_choice: str = "e0",
+        gate_choices: list[str] | None = None,
         route: str = "decision-provenance",
         sufficient: bool = True,
         reason_cost: float = 0.0,
     ) -> None:
         self.reason_text = reason_text
         self.gate_choice = gate_choice
+        #: When set, consumed one entry per claim-gate call (one per sentence),
+        #: so a test can cite some sentences and reject others. The last entry
+        #: repeats if more sentences arrive than choices.
+        self.gate_choices = list(gate_choices) if gate_choices is not None else None
+        self._gate_index = 0
         self.route = route
         self.sufficient = sufficient
         self.reason_cost = reason_cost
@@ -157,4 +176,11 @@ class DispatchOpenRouter:
             return completion(decision(self.sufficient, 0.9))
         if "out-of-graph" in choice.get("enum", []):
             return completion(decision(self.route, 0.9))
-        return completion(decision(self.gate_choice, 0.9))
+        return completion(decision(self._next_gate_choice(), 0.9))
+
+    def _next_gate_choice(self) -> str:
+        if self.gate_choices is None:
+            return self.gate_choice
+        index = min(self._gate_index, len(self.gate_choices) - 1)
+        self._gate_index += 1
+        return self.gate_choices[index]
