@@ -37,7 +37,11 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         return retrieval.RetrievalResult(
             evidence_nodes=(
                 evidence_node("Decision", "rfc:200", title="Trait objects"),
-                evidence_node("Message", "message:5001", title="I object"),
+                evidence_node(
+                    "Message",
+                    "message:5001",
+                    text_ref="https://github.com/rust-lang/rfcs/pull/200#issuecomment-5001",
+                ),
             ),
             query_path=(),
             candidate_count=2,
@@ -80,6 +84,8 @@ def test_stream_emits_the_frozen_event_sequence(client: TestClient) -> None:
     assert stream[-1]["citation_count"] == 2
     assert stream[-1]["claims_total"] == 2
     assert stream[-1]["abstention_required"] is False
+    assert stream[-1]["ledger"]["calls"] > 0
+    assert stream[-1]["ledger"]["total_calls"] == stream[-1]["ledger"]["calls"]
 
     tool_calls = [event["tool_name"] for event in stream if event["type"] == events.TOOL_CALL_START]
     assert tool_calls == ["router_classify", "retrieve_evidence", "synthesize", "claim_gate"]

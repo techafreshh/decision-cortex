@@ -116,9 +116,30 @@ class EvidenceNode:
     score: float | None
 
 
+#: Each label's human-readable display property. The graph schema declares a
+#: different property per label (``Person.handle``, ``Commit.message``,
+#: ``DocVersion.content_ref``, …), so a fixed ``title``/``name`` lookup would
+#: show the raw id for most non-``Decision`` nodes. ``Message`` has no text
+#: property, only the ``text_ref`` permalink, so that is its display value.
+#: ``test_node_title_properties_match_the_schema`` pins this to the schema.
+_DISPLAY_PROPERTIES: dict[str, str] = {
+    "Decision": "title",
+    "Issue": "title",
+    "Person": "handle",
+    "Team": "name",
+    "Area": "name",
+    "Concept": "name",
+    "Commit": "message",
+    "DocVersion": "content_ref",
+    "Message": "text_ref",
+}
+
+
 def node_title(node: EvidenceNode) -> str:
     """The node's human-readable title, falling back to its id."""
-    return str(node.properties.get("title") or node.properties.get("name") or node.id)
+    property_name = _DISPLAY_PROPERTIES.get(node.label)
+    value = node.properties.get(property_name) if property_name else None
+    return str(value) if value else node.id
 
 
 def evidence_line(node: EvidenceNode) -> str:

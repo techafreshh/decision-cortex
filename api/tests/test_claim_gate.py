@@ -7,9 +7,11 @@ from fakes import evidence_node
 from api import llm
 from api.claim_gate import claim_gate
 
+COMMENT_REF = "https://github.com/rust-lang/rfcs/pull/200#issuecomment-5001"
+
 EVIDENCE = (
     evidence_node("Decision", "rfc:200", title="Trait objects"),
-    evidence_node("Message", "message:5001", title="I object"),
+    evidence_node("Message", "message:5001", text_ref=COMMENT_REF),
 )
 
 
@@ -74,4 +76,4 @@ def test_gate_prompt_labels_every_evidence_node() -> None:
     claim_gate("Who objected?", EVIDENCE, decide_fn=decide)
 
     assert "[e0] Decision rfc:200: Trait objects" in prompts[0]
-    assert "[e1] Message message:5001: I object" in prompts[0]
+    assert f"[e1] Message message:5001: {COMMENT_REF}" in prompts[0]

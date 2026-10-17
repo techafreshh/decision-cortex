@@ -59,6 +59,19 @@ def test_an_uncited_sentence_requires_abstention() -> None:
     assert plan.abstention_required is True
 
 
+def test_an_empty_synthesis_requires_abstention() -> None:
+    plan = answer_question(
+        "Who objected to trait objects?",
+        reader=provenance_reader(),
+        decide_fn=PipelineDecide(),
+        reason_fn=lambda prompt: "",
+    )
+
+    assert plan.sentences == ()
+    assert plan.claims_total == 0
+    assert plan.abstention_required is True
+
+
 def test_out_of_graph_short_circuits_before_synthesis() -> None:
     def reason(prompt: str) -> str:
         raise AssertionError("out-of-graph must not synthesize text")

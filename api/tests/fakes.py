@@ -64,13 +64,25 @@ class FakeReader:
 
 
 def provenance_reader() -> FakeReader:
-    """A reader that seeds ``rfc:200`` and walks to a comment and a person."""
+    """A reader that seeds ``rfc:200`` and walks to a comment and a person.
+
+    Node properties mirror the declared schema: a ``Message`` carries a
+    ``text_ref`` permalink and a ``Person`` its ``handle`` — never a ``title``
+    the parser does not emit.
+    """
     return FakeReader(
         fulltext=[("rfc:200", 3.0)],
         out={
             "rfc:200": [
-                ("EVIDENCED_BY", node("Message", "message:5001", title="I object")),
-                ("PROPOSED_BY", node("Person", "person:bob", title="Bob")),
+                (
+                    "EVIDENCED_BY",
+                    node(
+                        "Message",
+                        "message:5001",
+                        text_ref="https://github.com/rust-lang/rfcs/pull/200#issuecomment-5001",
+                    ),
+                ),
+                ("PROPOSED_BY", node("Person", "person:bob", handle="bob")),
             ]
         },
     )

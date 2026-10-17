@@ -28,11 +28,10 @@ from api.claim_gate import ClaimVerdict, claim_gate
 from api.retrieval import (
     EvidenceNode,
     GraphReader,
-    RetrievalResult,
     node_title,
     retrieve_evidence,
 )
-from api.router import Route, RouterResult, router_classify
+from api.router import Route, router_classify
 from api.synthesis import synthesize
 
 #: The four PRD §10 scripted scenarios and the question each one asks. The
@@ -115,15 +114,17 @@ def answer_question(
         decide_fn=decide_fn,
     )
     if route.label == Route.OUT_OF_GRAPH:
-        return _plan_without_text(route, retrieval)
-
-    synthesis = synthesize(
-        question, route.label, retrieval.evidence_nodes, reason_fn=reason_fn
-    )
-    verdicts = tuple(
-        claim_gate(sentence, retrieval.evidence_nodes, decide_fn=decide_fn)
-        for sentence in synthesis.sentences
-    )
+        sentences: tuple[str, ...] = ()
+        verdicts: tuple[ClaimVerdict, ...] = ()
+    else:
+        synthesis = synthesize(
+            question, route.label, retrieval.evidence_nodes, reason_fn=reason_fn
+        )
+        sentences = synthesis.sentences
+        verdicts = tuple(
+            claim_gate(sentence, retrieval.evidence_nodes, decide_fn=decide_fn)
+            for sentence in sentences
+        )
     claims_total = len(verdicts)
     claims_cited = sum(1 for verdict in verdicts if verdict.cited)
     citation_count = sum(len(verdict.evidence_ids) for verdict in verdicts)
@@ -136,12 +137,12 @@ def answer_question(
         stopped_early=retrieval.stopped_early,
         queries=retrieval.cypher,
         evidence_nodes=retrieval.evidence_nodes,
-        sentences=synthesis.sentences,
+        sentences=sentences,
         verdicts=verdicts,
         citation_count=citation_count,
         claims_total=claims_total,
         claims_cited=claims_cited,
-        abstention_required=claims_cited < claims_total,
+        abstention_required=claims_total == 0 or claims_cited < claims_total,
     )
 
 
@@ -155,23 +156,27 @@ def ask_events(
     reason_fn: _ReasonFn = llm.reason,
 ) -> Iterator[dict[str, Any]]:
     """Yield the AG-UI event stream for one ``POST /ask`` request."""
-    before = _ledger_snapshot()
     resolved_question = SCENARIOS[scenario] if scenario is not None else (question or "")
     yield _event(
         events.RUN_STARTED, question=resolved_question, scenario=scenario
     )
 
-    plan = cache.get(scenario) if scenario is not None else None
-    if plan is None:
-        plan = answer_question(
+    def compute() -> AnswerPlan:
+        return answer_question(
             resolved_question,
             reader=reader,
             embedder=embedder,
             decide_fn=decide_fn,
             reason_fn=reason_fn,
         )
-        if scenario is not None:
-            cache.put(scenario, plan)
+
+    before = _ledger_snapshot()
+    if scenario is None:
+        plan = compute()
+    else:
+        plan, computed = cache.get_or_compute(scenario, compute)
+        if not computed:
+            before = _ledger_snapshot()
 
     yield from _plan_events(plan)
     ledger = _ledger_delta(before)
@@ -183,26 +188,6 @@ def ask_events(
         claims_cited=plan.claims_cited,
         abstention_required=plan.abstention_required,
         ledger=ledger,
-    )
-
-
-def _plan_without_text(route: RouterResult, retrieval: RetrievalResult) -> AnswerPlan:
-    """The ``out-of-graph`` plan: evidence for receipts, but no synthesized text."""
-    return AnswerPlan(
-        route=route.label.value,
-        route_confidence=route.confidence,
-        route_escalated=route.escalated,
-        candidate_count=retrieval.candidate_count,
-        rounds=retrieval.rounds,
-        stopped_early=retrieval.stopped_early,
-        queries=retrieval.cypher,
-        evidence_nodes=retrieval.evidence_nodes,
-        sentences=(),
-        verdicts=(),
-        citation_count=0,
-        claims_total=0,
-        claims_cited=0,
-        abstention_required=True,
     )
 
 

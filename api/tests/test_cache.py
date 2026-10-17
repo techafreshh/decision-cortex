@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 from fakes import DispatchOpenRouter, provenance_reader
 
@@ -71,6 +73,32 @@ def test_second_scripted_call_issues_no_s2_calls(
     assert ledger_event(second)["ledger"]["calls"] == 0
     assert second[-1]["type"] == events.RUN_FINISHED
     assert second[-1]["citation_count"] == first[-1]["citation_count"]
+
+
+def test_concurrent_cold_requests_compute_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dispatcher = DispatchOpenRouter(reason_text=TWO_SENTENCES)
+    monkeypatch.setattr(llm, "_post_chat_completion", dispatcher)
+
+    barrier = threading.Barrier(2)
+    streams: dict[int, list[dict]] = {}
+
+    def request(index: int) -> None:
+        barrier.wait()
+        streams[index] = list(
+            ask_events(None, "ask_corpus", reader=provenance_reader())
+        )
+
+    threads = [threading.Thread(target=request, args=(i,)) for i in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert dispatcher.reason_calls == 1
+    calls = sorted(ledger_event(streams[i])["ledger"]["calls"] for i in (0, 1))
+    assert calls == [0, len(llm.ledger_records())]
 
 
 def test_free_questions_are_never_cached(monkeypatch: pytest.MonkeyPatch) -> None:
