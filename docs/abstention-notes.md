@@ -17,7 +17,7 @@ renderer to consume it. The payload field set is fixed by PRD §10:
 |---|---|
 | `nodes_searched` | `RetrievalResult.candidate_count` — how many evidence nodes the walk gathered |
 | `evidence_chains` | traversed (non-seed) query-path steps — the real graph hops behind the search |
-| `matches` | `claims_cited` — 0 for a true negative, and the ledger row's `choice` |
+| `matches` | `claims_cited` — 0 only for a true negative, and the ledger row's `choice` |
 | `came_close` | up to three real Decisions the search reached but that did not answer |
 
 ## Came-close is seed-only and can never fabricate
@@ -37,29 +37,41 @@ not a ranked list that competes with the answer.
 
 ## An abstention is not an LLM call
 
-Each `record_abstention` appends one decision-ledger row with
-`model = "abstention:no-record"`, `choice = matches`, `confidence = None`,
+Each `record_abstention` appends one decision-ledger row named after its trigger,
+`model = "abstention:<trigger>"`, with `choice = matches`, `confidence = None`,
 `latency_ms = 0`, `cost_usd = 0.0`, `escalated = False`, and the question's
 sha256 as `input_digest`. It is a deterministic compilation of the retrieval
 result, so it has no model cost; recording it keeps the ledger a complete trace
-of every gate the answer passed, including the one that returned nothing.
+of every gate the answer passed, including the one that returned nothing. Naming
+the row after the trigger lets the ledger tell a true negative apart from a
+degraded run.
 
 The row is appended in `record_abstention`, which `answer_question` calls at
 plan-build time. `ask_events` only recomputes a plan on a scenario cache miss,
 so a cached replay emits zero new ledger rows — the same rule the other plan
 steps follow.
 
-## One abstention trigger, two shapes
+## Three abstention triggers, two of which show a card
 
 `abstention_required = claims_total == 0 or claims_cited < claims_total`
-(`api/answer.py`), unchanged from #8. It fires two ways:
+(`api/answer.py`), unchanged from #8. `_abstention_trigger` classifies why, and
+`AbstentionTrigger.emits_card` decides whether the card is rendered:
 
-- **out-of-graph route** — no synthesis runs, so `claims_total == 0`; the card
-  is a pure "no record" with the came-close trail.
-- **uncited claim** — synthesis produced sentences but the gate cited fewer than
-  all of them; `matches = claims_cited` shows how many *were* grounded.
+- **`out-of-graph`** — the router returned `out-of-graph`, so no synthesis runs
+  and `claims_total == 0`. A true negative; the card carries the came-close
+  trail. **Emits a card.**
+- **`uncited`** — synthesis produced sentences and the gate cited some but not
+  all of them (`0 < claims_cited < claims_total`). A partial answer;
+  `matches = claims_cited` shows how many *were* grounded. **Emits a card.**
+- **`ungrounded`** — an in-graph run that grounded *no* claim
+  (`claims_total == 0` from an empty synthesis, or `claims_cited == 0` because
+  the gate rejected every sentence — a failed model call lands here too). This
+  is a degraded run, not a finding about the corpus, so it abstains and ledgers
+  a row but **emits no card**: a model failure must never render as a confident
+  "no record" verdict.
 
-Both carry the same four fields, so the web has one component to render.
+The two card-bearing triggers carry the same four fields, so the web has one
+component to render.
 
 ## `record_abstention` takes no route argument
 
@@ -67,7 +79,9 @@ The tracked plan sketched `record_abstention(question, route, retrieval, ...)`,
 but `route` has no consumer: it is not a receipt field (the PRD fixes the four
 above), it is not in the ledger row, and the tool call's `args` already carry
 `{"route": plan.route}`. An unused parameter is speculative surface, so it is
-dropped; the route still reaches the UI through the tool-call args.
+dropped; the route still reaches the UI through the tool-call args. The
+*classified* trigger, by contrast, is a real input — it selects the ledger label
+and whether the card emits — so it is passed explicitly rather than re-derived.
 
 ## `SEED_RELATIONS` is public
 

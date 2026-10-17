@@ -73,7 +73,11 @@ def reader() -> retrieval.FalkorDBGraphReader:
 
 
 def _stream(
-    reader: retrieval.FalkorDBGraphReader, question: str, decide: PipelineDecide
+    reader: retrieval.FalkorDBGraphReader,
+    question: str,
+    decide: PipelineDecide,
+    *,
+    reason_text: str = "This unsupported sentence must be flagged.",
 ) -> list[dict[str, Any]]:
     return list(
         answer.ask_events(
@@ -81,7 +85,7 @@ def _stream(
             reader=reader,
             embedder=None,
             decide_fn=decide,
-            reason_fn=lambda prompt: "This unsupported sentence must be flagged.",
+            reason_fn=lambda prompt: reason_text,
         )
     )
 
@@ -113,9 +117,14 @@ def test_no_record_questions_abstain_with_receipts(
         assert card["nodes_searched"] >= 0
 
 
-def test_uncited_claim_abstains_with_receipts(
+def test_ungrounded_claim_abstains_without_a_card(
     reader: retrieval.FalkorDBGraphReader,
 ) -> None:
+    """An in-graph run whose every claim is uncited abstains but shows no card.
+
+    This is the R1 guard on the real graph: a failed gate (or a failed model
+    call) must not render as a confident "no record" verdict.
+    """
     stream = _stream(
         reader,
         "What did the language team decide about trait objects, and who objected?",
@@ -123,8 +132,30 @@ def test_uncited_claim_abstains_with_receipts(
     )
 
     assert stream[-1]["abstention_required"] is True
+    assert not any(
+        event["type"] == events.TOOL_CALL_RESULT
+        and event["tool_call_id"] == "record_abstention"
+        for event in stream
+    )
+
+
+def test_partial_citation_emits_card_with_a_match(
+    reader: retrieval.FalkorDBGraphReader,
+) -> None:
+    """A run that cites one of two sentences abstains and still shows a card."""
+    stream = _stream(
+        reader,
+        "What did the language team decide about trait objects, and who objected?",
+        PipelineDecide(route="fact", gate_choices=["e0", "none"]),
+        reason_text=(
+            "Trait objects let values of different types share a vtable.\n"
+            "This unsupported sentence must be flagged."
+        ),
+    )
+
+    assert stream[-1]["abstention_required"] is True
     card = _abstention_card(stream)
-    assert card["matches"] == 0
+    assert card["matches"] == 1
     assert card["nodes_searched"] >= 1
 
 

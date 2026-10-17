@@ -11,8 +11,11 @@ synthesis, so it produces no text and always requires abstention.
 :data:`api.cache.cache`: a cache hit replays the stored plan's tool-call and
 text events and emits a fresh ledger summary, so the second call issues zero
 S2 calls. Free questions always run live. When an answer abstains, the plan
-carries an :class:`~api.abstention.AbstentionReceipt` and the stream emits a
-``record_abstention`` tool call with its payload for the web ``NoRecordCard``.
+carries an :class:`~api.abstention.AbstentionReceipt`; the stream emits a
+``record_abstention`` tool call with its payload for the web ``NoRecordCard``
+when the trigger warrants a card (a true negative or a partial answer), and
+stays cardless for an ungrounded run so a model failure is not rendered as a
+confident "no record" verdict.
 """
 
 from __future__ import annotations
@@ -23,7 +26,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from api import events, llm
-from api.abstention import AbstentionReceipt, record_abstention
+from api.abstention import AbstentionReceipt, AbstentionTrigger, record_abstention
 from api.cache import cache
 from api.claim_gate import ClaimVerdict, claim_gate
 from api.retrieval import (
@@ -131,6 +134,7 @@ def answer_question(
     claims_cited = sum(1 for verdict in verdicts if verdict.cited)
     citation_count = sum(len(verdict.evidence_ids) for verdict in verdicts)
     abstention_required = claims_total == 0 or claims_cited < claims_total
+    trigger = _abstention_trigger(route.label, claims_cited)
     return AnswerPlan(
         route=route.label.value,
         route_confidence=route.confidence,
@@ -147,11 +151,28 @@ def answer_question(
         claims_cited=claims_cited,
         abstention_required=abstention_required,
         abstention=(
-            record_abstention(question, retrieval, claims_cited=claims_cited)
+            record_abstention(
+                question, retrieval, trigger=trigger, claims_cited=claims_cited
+            )
             if abstention_required
             else None
         ),
     )
+
+
+def _abstention_trigger(route: Route, claims_cited: int) -> AbstentionTrigger:
+    """Classify an abstention; only a true negative or a partial answer shows a card.
+
+    An ``out-of-graph`` route is the router's true negative. Otherwise, a run
+    that cited some but not all of its claims is a partial answer; a run that
+    cited none of them — an empty synthesis or a gate that grounded no sentence,
+    including a failed model call — is ungrounded and emits no card.
+    """
+    if route == Route.OUT_OF_GRAPH:
+        return AbstentionTrigger.OUT_OF_GRAPH
+    if claims_cited > 0:
+        return AbstentionTrigger.UNCITED
+    return AbstentionTrigger.UNGROUNDED
 
 
 def ask_events(
@@ -245,7 +266,7 @@ def _plan_events(plan: AnswerPlan) -> Iterator[dict[str, Any]]:
             cited=verdict.cited,
         )
     yield _event(events.TEXT_MESSAGE_END, message_id=_MESSAGE_ID)
-    if plan.abstention is not None:
+    if plan.abstention is not None and plan.abstention.trigger.emits_card:
         yield from _tool_call(
             "record_abstention",
             {"route": plan.route},

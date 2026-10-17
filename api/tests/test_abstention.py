@@ -11,7 +11,11 @@ import pytest
 from fakes import DispatchOpenRouter, provenance_reader
 
 from api import answer, events, llm, retrieval
-from api.abstention import CAME_CLOSE_LIMIT, record_abstention
+from api.abstention import (
+    CAME_CLOSE_LIMIT,
+    AbstentionTrigger,
+    record_abstention,
+)
 
 ENV_VARS = ("OPENROUTER_API_KEY", "DECIDE_MODEL_SLUG", "REASON_MODEL_SLUG", "SPEND_CAP_USD")
 
@@ -64,7 +68,12 @@ def test_receipt_reports_nodes_chains_and_matches() -> None:
         ],
     )
 
-    receipt = record_abstention("Did Rust do X?", result, claims_cited=0)
+    receipt = record_abstention(
+        "Did Rust do X?",
+        result,
+        trigger=AbstentionTrigger.OUT_OF_GRAPH,
+        claims_cited=0,
+    )
 
     assert receipt.nodes_searched == 2
     assert receipt.evidence_chains == 1
@@ -77,7 +86,12 @@ def test_evidence_chains_excludes_seed_steps() -> None:
         [retrieval.QueryStep("query", "SEED_FULLTEXT", "rfc:200")],
     )
 
-    receipt = record_abstention("Did Rust do X?", result, claims_cited=0)
+    receipt = record_abstention(
+        "Did Rust do X?",
+        result,
+        trigger=AbstentionTrigger.OUT_OF_GRAPH,
+        claims_cited=0,
+    )
 
     assert receipt.evidence_chains == 0
 
@@ -96,7 +110,12 @@ def test_came_close_ranks_seed_decisions_by_normalized_relevance() -> None:
         [],
     )
 
-    receipt = record_abstention("Did Rust do X?", result, claims_cited=0)
+    receipt = record_abstention(
+        "Did Rust do X?",
+        result,
+        trigger=AbstentionTrigger.OUT_OF_GRAPH,
+        claims_cited=0,
+    )
 
     assert len(receipt.came_close) == CAME_CLOSE_LIMIT
     assert [entry.id for entry in receipt.came_close] == ["rfc:v1", "rfc:f2", "rfc:v2"]
@@ -113,7 +132,12 @@ def test_came_close_ties_break_on_ascending_id() -> None:
         [],
     )
 
-    receipt = record_abstention("Did Rust do X?", result, claims_cited=0)
+    receipt = record_abstention(
+        "Did Rust do X?",
+        result,
+        trigger=AbstentionTrigger.OUT_OF_GRAPH,
+        claims_cited=0,
+    )
 
     assert [entry.id for entry in receipt.came_close] == ["rfc:a", "rfc:b"]
 
@@ -127,7 +151,12 @@ def test_came_close_is_empty_without_seed_decisions() -> None:
         [],
     )
 
-    receipt = record_abstention("Did Rust do X?", result, claims_cited=0)
+    receipt = record_abstention(
+        "Did Rust do X?",
+        result,
+        trigger=AbstentionTrigger.OUT_OF_GRAPH,
+        claims_cited=0,
+    )
 
     assert receipt.came_close == ()
 
@@ -138,16 +167,39 @@ def test_abstention_appends_one_costless_ledger_row() -> None:
         [retrieval.QueryStep("query", "SEED_FULLTEXT", "rfc:200")],
     )
 
-    record_abstention("Did Rust do X?", result, claims_cited=0)
+    record_abstention(
+        "Did Rust do X?",
+        result,
+        trigger=AbstentionTrigger.OUT_OF_GRAPH,
+        claims_cited=0,
+    )
 
     records = llm.ledger_records()
     assert len(records) == 1
     row = records[0]
-    assert row.model == "abstention:no-record"
+    assert row.model == "abstention:out-of-graph"
     assert row.choice == 0
     assert row.confidence is None
     assert row.cost_usd == 0.0
     assert row.escalated is False
+
+
+def test_only_a_true_negative_or_partial_answer_emits_a_card() -> None:
+    assert AbstentionTrigger.OUT_OF_GRAPH.emits_card is True
+    assert AbstentionTrigger.UNCITED.emits_card is True
+    assert AbstentionTrigger.UNGROUNDED.emits_card is False
+
+
+def test_ledger_row_is_named_after_its_trigger() -> None:
+    result = _result([_node("rfc:200", source="fulltext", score=3.0)], [])
+
+    for trigger in AbstentionTrigger:
+        with llm._ledger_lock:
+            llm._ledger.clear()
+        record_abstention(
+            "Did Rust do X?", result, trigger=trigger, claims_cited=1
+        )
+        assert llm.ledger_records()[0].model == f"abstention:{trigger.value}"
 
 
 def test_no_record_stream_emits_record_abstention(
@@ -229,3 +281,115 @@ def test_cited_answer_emits_no_record_abstention(
         for event in stream
     )
     assert stream[-1]["abstention_required"] is False
+
+
+@pytest.mark.parametrize(
+    ("route", "claims_cited", "expected"),
+    [
+        (answer.Route.OUT_OF_GRAPH, 0, AbstentionTrigger.OUT_OF_GRAPH),
+        (answer.Route.OUT_OF_GRAPH, 3, AbstentionTrigger.OUT_OF_GRAPH),
+        (answer.Route.FACT, 1, AbstentionTrigger.UNCITED),
+        (answer.Route.FACT, 0, AbstentionTrigger.UNGROUNDED),
+    ],
+)
+def test_abstention_trigger_classification(
+    route: answer.Route, claims_cited: int, expected: AbstentionTrigger
+) -> None:
+    assert answer._abstention_trigger(route, claims_cited) is expected
+
+
+def test_partial_citation_plan_carries_the_cited_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        llm,
+        "_post_chat_completion",
+        DispatchOpenRouter(
+            reason_text="One.\nTwo.", route="fact", gate_choices=["e0", "none"]
+        ),
+    )
+
+    plan = answer.answer_question(
+        "Who objected to trait objects?", reader=provenance_reader()
+    )
+
+    assert plan.claims_total == 2
+    assert plan.claims_cited == 1
+    assert plan.abstention_required is True
+    assert plan.abstention is not None
+    assert plan.abstention.trigger is AbstentionTrigger.UNCITED
+    assert plan.abstention.matches == 1
+
+
+def test_ungrounded_plan_carries_the_ungrounded_trigger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        llm,
+        "_post_chat_completion",
+        DispatchOpenRouter(reason_text="", route="fact"),
+    )
+
+    plan = answer.answer_question(
+        "Who objected to trait objects?", reader=provenance_reader()
+    )
+
+    assert plan.abstention_required is True
+    assert plan.abstention is not None
+    assert plan.abstention.trigger is AbstentionTrigger.UNGROUNDED
+    assert plan.abstention.trigger.emits_card is False
+
+
+def test_partial_citation_emits_card_with_the_cited_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        llm,
+        "_post_chat_completion",
+        DispatchOpenRouter(
+            reason_text="One.\nTwo.", route="fact", gate_choices=["e0", "none"]
+        ),
+    )
+
+    stream = list(
+        answer.ask_events("Who objected to trait objects?", reader=provenance_reader())
+    )
+
+    result = next(
+        event
+        for event in stream
+        if event["type"] == events.TOOL_CALL_RESULT
+        and event["tool_call_id"] == "record_abstention"
+    )
+    assert result["result"]["matches"] == 1
+    assert result["result"]["came_close"] == [
+        {"id": "rfc:200", "label": "Decision", "title": "rfc:200"}
+    ]
+    assert stream[-1]["abstention_required"] is True
+    assert stream[-1]["claims_total"] == 2
+    assert stream[-1]["claims_cited"] == 1
+
+
+def test_ungrounded_in_graph_run_abstains_without_a_card(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        llm,
+        "_post_chat_completion",
+        DispatchOpenRouter(
+            reason_text="One.\nTwo.", route="fact", gate_choices=["none", "none"]
+        ),
+    )
+
+    stream = list(
+        answer.ask_events("Who objected to trait objects?", reader=provenance_reader())
+    )
+
+    assert not any(
+        event["type"] == events.TOOL_CALL_RESULT
+        and event["tool_call_id"] == "record_abstention"
+        for event in stream
+    )
+    assert stream[-1]["abstention_required"] is True
+    assert stream[-1]["claims_total"] == 2
+    assert stream[-1]["claims_cited"] == 0

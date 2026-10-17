@@ -8,7 +8,7 @@ import pytest
 from fakes import DispatchOpenRouter, provenance_reader
 
 from api import events, llm
-from api.abstention import AbstentionReceipt
+from api.abstention import AbstentionReceipt, AbstentionTrigger
 from api.answer import AnswerPlan, ask_events
 from api.cache import ScenarioCache, cache
 
@@ -43,7 +43,11 @@ def empty_plan() -> AnswerPlan:
         claims_cited=0,
         abstention_required=True,
         abstention=AbstentionReceipt(
-            nodes_searched=0, evidence_chains=0, matches=0, came_close=()
+            nodes_searched=0,
+            evidence_chains=0,
+            matches=0,
+            came_close=(),
+            trigger=AbstentionTrigger.UNGROUNDED,
         ),
     )
 
