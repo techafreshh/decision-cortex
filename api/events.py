@@ -17,7 +17,9 @@ Frozen payloads (field names are snake_case, matching the rest of the API):
 - ``TEXT_MESSAGE_CONTENT`` — ``message_id``, ``delta`` (the sentence),
   ``chips`` (citation chips), ``cited`` (whether the sentence cleared its gate).
 - ``CYPHER_PREVIEW`` — ``queries`` (the Cypher strings retrieval actually ran).
-- ``LEDGER_UPDATE`` — ``ledger`` (the decision-ledger summary).
+- ``LEDGER_UPDATE`` — ``ledger`` (the decision-ledger summary: ``calls``,
+  ``cost_usd``, ``total_calls``, ``total_cost_usd``, and ``records`` — this
+  run's :class:`~api.llm.LedgerRecord` rows).
 - ``FAITHFULNESS_PENDING`` — no extra fields; the async scoring marker.
 - ``RUN_FINISHED`` — ``citation_count``, ``claims_total``, ``claims_cited``,
   ``abstention_required``, ``ledger``.

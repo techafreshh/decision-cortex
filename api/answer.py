@@ -337,4 +337,7 @@ def _ledger_delta(before: _LedgerSnapshot) -> dict[str, Any]:
         "cost_usd": round(after.cost_usd - before.cost_usd, 6),
         "total_calls": after.calls,
         "total_cost_usd": round(after.cost_usd, 6),
+        "records": [
+            record.model_dump() for record in llm.ledger_records()[before.calls :]
+        ],
     }

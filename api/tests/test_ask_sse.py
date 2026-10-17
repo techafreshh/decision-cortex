@@ -121,3 +121,26 @@ def test_unknown_scenario_is_rejected(client: TestClient) -> None:
 def test_missing_question_and_scenario_is_rejected(client: TestClient) -> None:
     assert client.post("/ask", json={}).status_code == 400
     assert client.post("/ask", json={"question": "   "}).status_code == 400
+
+
+def test_ledger_events_carry_this_runs_records(client: TestClient) -> None:
+    response = client.post("/ask", json={"question": "Who objected to trait objects?"})
+    stream = parse_sse(response.text)
+
+    ledger_event = next(event for event in stream if event["type"] == events.LEDGER_UPDATE)
+    ledger = ledger_event["ledger"]
+    records = ledger["records"]
+    assert records
+    assert ledger["calls"] == len(records)
+    for record in records:
+        assert set(record) == {
+            "input_digest",
+            "choice",
+            "confidence",
+            "model",
+            "latency_ms",
+            "cost_usd",
+            "escalated",
+        }
+
+    assert stream[-1]["ledger"]["records"] == records

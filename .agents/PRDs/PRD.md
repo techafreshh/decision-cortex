@@ -313,7 +313,7 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 | `/ask` | POST → SSE | AG-UI event stream (the product runtime) |
 | `/graph/impact/{node_id}` | GET | Subgraph for ImpactGraph (nodes, edges, evidence types, depths) |
 | `/timeline` | GET | Decisions + `SUPERSEDES` edges + stances (filterable by area/team) |
-| `/node/{id}` | GET | Node detail (SourcePanel & inspector backing) |
+| `/node/{id}` | GET | Node detail (SourcePanel & inspector backing); `{id, label, properties, source}` or 404 |
 | `/verification` | GET | The 30 gold + 10 no-record questions (pinned set) |
 | `/verification/run` | POST | Executes the set; returns accuracy + abstention-correctness report |
 | `/exports/report` | POST | Markdown report generation → download |
@@ -329,6 +329,22 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 ```
 
 **SSE event flow (AG-UI schema):** `RUN_STARTED` → tool-call events (`router_classify`, `retrieve_evidence`, `claim_gate`, …) each rendering as registered generative-UI components with render props → `TEXT_MESSAGE_CONTENT` deltas (sentence-by-sentence, chips attached) → custom events (`cypher_preview` for CypherPeek, `ledger_update` for the footer, `faithfulness_pending`) → `RUN_FINISHED` (ledger summary + citation count).
+
+**Node detail (`GET /node/{id}`).** Resolves a citation-chip or inspector id to its graph node. The `label` is the schema label namespaced by the id prefix (`docs/graph-schema-notes.md` "Id namespacing"); `properties` are the node's stored graph properties (the derived `embedding` index artifact is omitted); `source` is a derived block carrying the canonical `url`, `author`, `date`, `stance`, and `truncated` when the node's schema declares them, and `null` otherwise. The graph stores only refs (`text_ref`, `content_ref`, `madr_link`) — never bodies — so `SourcePanel` renders this metadata and deep-links out to the real GitHub/RFC URL. Unknown id → 404. Response shape:
+
+```json
+{
+  "id": "message:12345",
+  "label": "Message",
+  "properties": { "pr_id": 123, "comment_id": 12345, "author": "alice",
+                  "ts": "2019-01-01T00:00:00Z", "text_ref": "https://...",
+                  "stance_hint": null, "truncated": true },
+  "source": { "url": "https://...", "author": "alice", "date": "2019-01-01T00:00:00Z",
+              "stance": null, "truncated": true }
+}
+```
+
+**Decision-ledger payload (`LEDGER_UPDATE.ledger` and `RUN_FINISHED.ledger`).** `{calls, cost_usd, total_calls, total_cost_usd}` plus `records`: this run's `LedgerRecord` rows (the locked seven-field schema — `input_digest, choice, confidence, model, latency_ms, cost_usd, escalated`). The pipeline computes the whole plan before it yields any event, so `LEDGER_UPDATE` lands **once per run**; the footer renders that run's rows and totals, not a per-decision tick.
 
 **Abstention payload (`record_abstention` tool result).** An abstention has one of three triggers: `out-of-graph` (the router found no record — a true negative), `uncited` (the gate left some but not all key claims uncited — a partial answer), or `ungrounded` (an in-graph run that grounded *no* claim at all: an empty synthesis, or a gate that cited none of the sentences — which includes a failed model call). For the first two triggers the stream emits one more tool call after `TEXT_MESSAGE_END` and before `faithfulness_pending`: `record_abstention` → `TOOL_CALL_RESULT.result` = `{nodes_searched, evidence_chains, matches, came_close}`. `nodes_searched` is the candidate evidence count; `evidence_chains` is the number of traversed (non-seed) query-path steps; `matches` is the cited-claim count (0 only for a true negative); `came_close` is a list of `{id, label, title}` citation chips for the closest real seed decisions the search reached — empty when nothing came close, and never a fabricated near-miss. An `ungrounded` abstention emits **no** card: a model failure must never be rendered as a confident "no record" verdict. Every abstention — card or not — appends one decision-ledger row named `abstention:<trigger>` (`abstention:out-of-graph`, `abstention:uncited`, or `abstention:ungrounded`), so the ledger distinguishes a true negative from a degraded run. The web `NoRecordCard` (#10) renders the result; no new SSE event constant is introduced.
 
