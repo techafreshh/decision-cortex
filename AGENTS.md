@@ -159,8 +159,8 @@ ruff check .                  # lint (CI: ci.yml python job)
 pytest -q -m 'not integration and not live'   # offline unit tests
 scripts/run_scenario_api.sh <scratch_dir> <port>  # boot + readiness-probe /healthz
 npm --prefix web run build    # UI static bundle (web/ builds today)
-# planned, pending their phases:
-docker compose up --build     # full local brain (falkordb + api + web) — infra/ pending
+cp infra/.env.example infra/.env   # then set OPENROUTER_API_KEY
+docker compose -f infra/docker-compose.yml up -d --build   # full local brain (falkordb + api + web), seeds on boot
 # snapshot pull (Phase 0 only; needs vault GITHUB_TOKEN, rate-limit-safe)
 ```
 

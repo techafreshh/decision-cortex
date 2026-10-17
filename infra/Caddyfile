@@ -1,0 +1,31 @@
+# Caddy front door for the Decision Cortex SPA + API.
+#
+# Site address defaults to plain HTTP on :80 (compose publishes it on host 8080)
+# so a local `docker compose up` needs no TLS. Set SITE_ADDRESS to a hostname on
+# a VPS and Caddy provisions automatic HTTPS for it.
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	# API routes are reverse-proxied to the api service. They live in their own
+	# `handle` blocks because Caddy runs `try_files` before `reverse_proxy`: a
+	# bare `try_files {path} /index.html` would rewrite /ask to the SPA shell
+	# before it could be proxied. `handle` blocks are mutually exclusive and
+	# matched in file order, so these win before the catch-all below.
+	handle /ask* {
+		reverse_proxy api:8000
+	}
+	handle /node/* {
+		reverse_proxy api:8000
+	}
+	handle /healthz {
+		reverse_proxy api:8000
+	}
+
+	# Everything else is the static SPA bundle, with client-side routing
+	# falling back to index.html.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
