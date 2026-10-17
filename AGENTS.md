@@ -62,11 +62,14 @@ their content is fully consolidated into the PRD and this file.)
   interface.
 - **App language: Python** (FastAPI). FalkorDB 6.x is the graph. Rust/Go only
   for benchmark-harness cosmetics, never the app.
-- **UI: React + Vite plain SPA + CopilotKit + AG-UI (SSE)** — no Next.js, no
-  SSR. Static bundle served by Caddy. Generative UI: every backend tool call
-  renders as a registered component (render props). AG-UI wiring ladder:
-  LangGraph-native adapter → official AG-UI Python SDK on FastAPI → hand-rolled
-  SSE with the same event schema (UI unchanged).
+- **UI: React + Vite plain SPA + AG-UI (SSE)** — no Next.js, no SSR. Static
+  bundle served by Caddy. Generative UI: every backend tool call renders as a
+  registered component (render props). AG-UI wiring ladder: LangGraph-native
+  adapter → official AG-UI Python SDK on FastAPI → hand-rolled SSE with the same
+  event schema (UI unchanged). The SPA ships on the ladder's hand-rolled rung —
+  its own SSE client and a tool→component registry — and the CopilotKit runtime
+  is deferred (accepted deviation, PR #22); the registry is transport-agnostic,
+  so a CopilotKit transport stays additive.
 - **Deployment:** Docker Compose (`falkordb` with volume + `api` + `web`) +
   Caddy HTTPS on the VPS; seed-on-boot; one-command local run
   (`docker compose up --build` + `.env` with one OpenRouter key).
@@ -121,13 +124,13 @@ their content is fully consolidated into the PRD and this file.)
 - Any change that alters a scripted scenario's expected output must update the
   cached answers and be gated behind a rehearsal.
 
-## Repository layout (planned — PRD §6.3)
+## Repository layout (PRD §6.3 — each dir lands with its phase)
 
 ```
 snapshot/      committed one-time JSONL corpus (rfcs, pr-comments, commits)
 ingest/        parsers (plain dicts) + GraphRAG-SDK ingestion
 api/           FastAPI agent core (router, gates, retrieval, S2, ledger)
-web/           React + Vite SPA + CopilotKit components + shared kit
+web/           React + Vite SPA + AG-UI components + shared kit
 verification/  30 gold + 10 no-record questions + eval runner
 infra/         docker-compose.yml, Caddyfile, .env.example, CI
 docs/          submission README, schema reference, blog seed
@@ -155,9 +158,9 @@ pip install -e '.[dev]'       # install api package + lint/test tooling
 ruff check .                  # lint (CI: ci.yml python job)
 pytest -q -m 'not integration and not live'   # offline unit tests
 scripts/run_scenario_api.sh <scratch_dir> <port>  # boot + readiness-probe /healthz
+npm --prefix web run build    # UI static bundle (web/ builds today)
 # planned, pending their phases:
 docker compose up --build     # full local brain (falkordb + api + web) — infra/ pending
-npm --prefix web run build    # UI static bundle — web/ pending
 # snapshot pull (Phase 0 only; needs vault GITHUB_TOKEN, rate-limit-safe)
 ```
 

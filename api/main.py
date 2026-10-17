@@ -10,10 +10,13 @@ Events: ``RUN_STARTED`` → tool-call events → ``TEXT_MESSAGE_CONTENT`` deltas
 with citation chips → custom ``cypher_preview``/``ledger_update``/
 ``faithfulness_pending`` → ``RUN_FINISHED``. ``scenario`` selects a deterministic
 scripted question (and its cached answer); ``question`` is the free-chat path.
+
+``GET /node/{id}`` resolves a citation-chip id to its graph node for the web
+``SourcePanel`` (:mod:`api.nodes`).
 """
 
 from collections.abc import Iterator
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -21,6 +24,8 @@ from pydantic import BaseModel
 
 from api.answer import SCENARIOS, ask_events
 from api.events import sse_encode
+from api.nodes import node_detail
+from api.retrieval import connect_from_env
 
 app = FastAPI(title="Decision Cortex API")
 
@@ -34,6 +39,14 @@ class AskRequest(BaseModel):
 @app.get("/healthz")
 def healthz() -> dict[str, object]:
     return {"status": "ok", "seeded": False}
+
+
+@app.get("/node/{node_id}")
+def node(node_id: str) -> dict[str, Any]:
+    detail = node_detail(connect_from_env(), node_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"unknown node {node_id!r}")
+    return detail
 
 
 @app.post("/ask")

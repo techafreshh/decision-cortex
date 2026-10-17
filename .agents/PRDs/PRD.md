@@ -62,7 +62,7 @@ The core value proposition has three parts. **(a) Provenance by construction:** 
 
 **Core functionality**
 - [ ] Q&A over the RFC corpus with **claim-level citations**: sentence-by-sentence answers, each sentence mapped to evidence nodes by the claim↔evidence gate; uncited sentences visually flagged
-- [ ] **Citation chips → SourcePanel**: every chip opens the actual RFC section (rendered markdown), the GitHub comment (author, date, stance), or the commit
+- [ ] **Citation chips → SourcePanel**: every chip opens the source's graph metadata (author, date, stance) and deep-links out to the RFC, the GitHub comment, or the commit (the graph stores refs, never bodies — §10)
 - [ ] **Principled abstention**: if key claims go uncited → answer abstains ("no record supports that — here's what the record does contain") with the `NoRecordCard` receipts (searched N nodes, M evidence chains, 0 matches) and the "proposals that came close" trail
 - [ ] **Impact Explorer**: click any Decision/Concept/Person → dependent subgraph blooms (React Flow); edges labeled by evidence type; hover-focus beat
 - [ ] **Timeline**: decisions over time with supersede arrows and loudest-voice stances; scripted "async/await lifecycle story" tour
@@ -91,7 +91,7 @@ The core value proposition has three parts. **(a) Provenance by construction:** 
 - [ ] Read-peephole MCP server (`@falkordb/mcpserver`): list / query — the product surface is the web app; don't over-invest
 
 **Tech & deployment**
-- [ ] FastAPI backend, React + Vite + CopilotKit + AG-UI (SSE) frontend, static bundle served by Caddy
+- [ ] FastAPI backend, React + Vite + AG-UI (SSE) frontend, static bundle served by Caddy
 - [ ] Docker Compose: `falkordb` (6.x, volume) + `api` + `web`; TLS; one-command local run
 - [ ] Live deployment on the VPS; seed-on-boot; demo answers cached; pre-baked dev cache for backup footage
 - [ ] CI: lint, unit, compose smoke
@@ -186,7 +186,7 @@ Agent core (FastAPI):
    RAGAS faithfulness (HHEM-2.1-Open, local CPU) scored per answer
         → "faithfulness 1.0 · 8/8 claims cited" badge (async, post-stream)
    Decision ledger → live UI footer (family pattern across Briefs 1–2)
-   ▼ AG-UI (SSE) → React (Vite) + CopilotKit UI
+   ▼ AG-UI (SSE) → React (Vite) UI
 ```
 
 ### 6.2 Key patterns
@@ -196,7 +196,7 @@ Agent core (FastAPI):
 - **Claim gate = the citation mechanism.** S2 emits sentence-by-sentence; per sentence, `decide()` maps it to evidence nodes (y/n + confidence). Uncited sentences are flagged; uncited key claims trigger abstention. The gate *is* the provenance path to the chips.
 - **Retrieval = graph-native.** Vector seed + full-text + multi-hop traversal in FalkorDB. Text-to-Cypher (SDK experimental) is a display flourish (CypherPeek), never the backbone.
 - **Idempotent ingestion.** Content-hash no-op writes via the SDK's incremental `apply_changes`; the committed snapshot makes judge-local replays deterministic and free.
-- **Generative UI.** Every backend tool call renders as a registered React component (render props fed by tool outputs), per the CopilotKit Jev-generative-UI pattern. AG-UI wiring decision at build time: LangGraph-native adapter vs. plain FastAPI emitting AG-UI events via the official Python SDK; fallback = hand-rolled SSE with the same event schema (UI unchanged).
+- **Generative UI.** Every backend tool call renders as a registered React component (render props fed by tool outputs), following the Jev-generative-UI pattern. AG-UI wiring: the SPA ships on the ladder's hand-rolled SSE rung (same event schema) with a tool→component registry; the CopilotKit runtime and the official Python SDK adapter remain additive options behind the same schema (UI unchanged).
 - **Demo determinism.** Seed-on-boot; scripted scenario buttons first, free chat second; demo answers cached.
 
 ### 6.3 Repository layout (suggested)
@@ -208,7 +208,7 @@ track3-decision-cortex/
 ├── snapshot/                # committed one-time corpus: rfcs.jsonl, pr-comments.jsonl, commits.jsonl
 ├── ingest/                  # parsers (emit plain dicts, no FalkorDB calls) + GraphRAG-SDK ingestion
 ├── api/                     # FastAPI agent core: router, gates, retrieval, synthesis, ledger
-├── web/                     # React + Vite SPA + CopilotKit components + shared kit
+├── web/                     # React + Vite SPA + AG-UI components + shared kit
 ├── verification/            # 30 gold + 10 no-record questions + eval runner
 ├── infra/                   # docker-compose.yml, Caddyfile, .env.example, CI
 ├── docs/                    # submission README, schema reference, blog seed
@@ -238,7 +238,7 @@ track3-decision-cortex/
 | Component | Spec |
 |---|---|
 | `AnswerCard` | Sentence-by-sentence render; each sentence carries `CitationChip`(s); uncited sentences visually flagged |
-| `CitationChip` → `SourcePanel` | Chip opens the actual source: RFC section (markdown), GitHub comment (author, date, stance), or commit |
+| `CitationChip` → `SourcePanel` | Chip opens the source's graph metadata (author, date, stance) and deep-links out to the RFC, GitHub comment, or commit (refs, never bodies — §10) |
 | `NoRecordCard` | Abstention UI: "searched N nodes · M evidence chains · 0 matches"; the "three proposals came close" trail; runs on the verification set's no-record buttons |
 | `ImpactGraph` | React Flow; evidence-type edge colors/labels; node click → subgraph blooms; hover-focus beat |
 | `TimelineView` | Decisions over time, supersede arrows, stance highlights; scripted async/await tour |
@@ -265,7 +265,7 @@ Read-peephole using `@falkordb/mcpserver`: list node labels/relations, run read-
 | S1 decision model | OpenRouter `decide()` — **slug TBD at build** | Jev-class candidate decided at build; wrapper abstracts the provider; **default config = small model with strict JSON schema** behind the same interface |
 | S2 synthesis model | OpenRouter `reason()` | Frontier reasoning LLM; slugs as config |
 | Faithfulness | RAGAS + **HHEM-2.1-Open** (local, **CPU-only** design) | Scored async post-stream; never blocks the answer |
-| UI | React + Vite SPA (no SSR/Next.js) + CopilotKit + AG-UI | Locked decision #5; static bundle via Caddy; AG-UI via official Python SDK first, hand-rolled SSE fallback |
+| UI | React + Vite SPA (no SSR/Next.js) + AG-UI (SSE) | Locked decision #5; static bundle via Caddy; ships on the ladder's hand-rolled SSE rung with a tool→component registry; CopilotKit runtime deferred (additive) |
 | Graph viz | React Flow | ImpactGraph |
 | MCP | `@falkordb/mcpserver` | Read-only peephole |
 | Deployment | Docker Compose + Caddy (TLS) on Techa's VPS | `falkordb` (volume) + `api` + `web`; seed-on-boot |
@@ -313,7 +313,7 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 | `/ask` | POST → SSE | AG-UI event stream (the product runtime) |
 | `/graph/impact/{node_id}` | GET | Subgraph for ImpactGraph (nodes, edges, evidence types, depths) |
 | `/timeline` | GET | Decisions + `SUPERSEDES` edges + stances (filterable by area/team) |
-| `/node/{id}` | GET | Node detail (SourcePanel & inspector backing) |
+| `/node/{id}` | GET | Node detail (SourcePanel & inspector backing); `{id, label, properties, source}` or 404 |
 | `/verification` | GET | The 30 gold + 10 no-record questions (pinned set) |
 | `/verification/run` | POST | Executes the set; returns accuracy + abstention-correctness report |
 | `/exports/report` | POST | Markdown report generation → download |
@@ -329,6 +329,22 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 ```
 
 **SSE event flow (AG-UI schema):** `RUN_STARTED` → tool-call events (`router_classify`, `retrieve_evidence`, `claim_gate`, …) each rendering as registered generative-UI components with render props → `TEXT_MESSAGE_CONTENT` deltas (sentence-by-sentence, chips attached) → custom events (`cypher_preview` for CypherPeek, `ledger_update` for the footer, `faithfulness_pending`) → `RUN_FINISHED` (ledger summary + citation count).
+
+**Node detail (`GET /node/{id}`).** Resolves a citation-chip or inspector id to its graph node. The `label` is the node's own schema label, read from the graph (`labels(n)`); `properties` are the node's stored graph properties (the derived `embedding` index artifact is omitted); `source` is a derived block carrying the canonical `url`, `author`, `date`, `stance`, and `truncated` when the node's schema declares them, and `null` otherwise. The graph stores only refs (`text_ref`, `content_ref`, `madr_link`) — never bodies — so `SourcePanel` renders this metadata and deep-links out to the real GitHub/RFC URL. Unknown id → 404. Response shape:
+
+```json
+{
+  "id": "message:12345",
+  "label": "Message",
+  "properties": { "pr_id": 123, "comment_id": 12345, "author": "alice",
+                  "ts": "2019-01-01T00:00:00Z", "text_ref": "https://...",
+                  "stance_hint": null, "truncated": true },
+  "source": { "url": "https://...", "author": "alice", "date": "2019-01-01T00:00:00Z",
+              "stance": null, "truncated": true }
+}
+```
+
+**Decision-ledger payload (`LEDGER_UPDATE.ledger` and `RUN_FINISHED.ledger`).** `{calls, cost_usd, total_calls, total_cost_usd}` plus `records`: this run's `LedgerRecord` rows (the locked seven-field schema — `input_digest, choice, confidence, model, latency_ms, cost_usd, escalated`). The pipeline computes the whole plan before it yields any event, so `LEDGER_UPDATE` lands **once per run**; the footer renders that run's rows and totals, not a per-decision tick.
 
 **Abstention payload (`record_abstention` tool result).** An abstention has one of three triggers: `out-of-graph` (the router found no record — a true negative), `uncited` (the gate left some but not all key claims uncited — a partial answer), or `ungrounded` (an in-graph run that grounded *no* claim at all: an empty synthesis, or a gate that cited none of the sentences — which includes a failed model call). For the first two triggers the stream emits one more tool call after `TEXT_MESSAGE_END` and before `faithfulness_pending`: `record_abstention` → `TOOL_CALL_RESULT.result` = `{nodes_searched, evidence_chains, matches, came_close}`. `nodes_searched` is the candidate evidence count; `evidence_chains` is the number of traversed (non-seed) query-path steps; `matches` is the cited-claim count (0 only for a true negative); `came_close` is a list of `{id, label, title}` citation chips for the closest real seed decisions the search reached — empty when nothing came close, and never a fabricated near-miss. An `ungrounded` abstention emits **no** card: a model failure must never be rendered as a confident "no record" verdict. Every abstention — card or not — appends one decision-ledger row named `abstention:<trigger>` (`abstention:out-of-graph`, `abstention:uncited`, or `abstention:ungrounded`), so the ledger distinguishes a true negative from a degraded run. The web `NoRecordCard` (#10) renders the result; no new SSE event constant is introduced.
 

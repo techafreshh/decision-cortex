@@ -199,16 +199,14 @@ def ask_events(
             reason_fn=reason_fn,
         )
 
-    before = _ledger_snapshot()
-    if scenario is None:
-        plan = compute()
-    else:
-        plan, computed = cache.get_or_compute(scenario, compute)
-        if not computed:
-            before = _ledger_snapshot()
+    with llm.collect_ledger() as records:
+        if scenario is None:
+            plan = compute()
+        else:
+            plan, _ = cache.get_or_compute(scenario, compute)
 
     yield from _plan_events(plan)
-    ledger = _ledger_delta(before)
+    ledger = _ledger_delta(records)
     yield _event(events.LEDGER_UPDATE, ledger=ledger)
     yield _event(
         events.RUN_FINISHED,
@@ -317,24 +315,23 @@ def _event(event_type: str, **fields: Any) -> dict[str, Any]:
     return {"type": event_type, **fields}
 
 
-@dataclass(frozen=True, slots=True)
-class _LedgerSnapshot:
-    calls: int
-    cost_usd: float
-
-
-def _ledger_snapshot() -> _LedgerSnapshot:
+def _ledger_snapshot() -> tuple[int, float]:
+    """The deploy-wide ``(calls, cost_usd)`` after this run finished."""
     records = llm.ledger_records()
-    return _LedgerSnapshot(
-        calls=len(records), cost_usd=sum(record.cost_usd for record in records)
-    )
+    return len(records), sum(record.cost_usd for record in records)
 
 
-def _ledger_delta(before: _LedgerSnapshot) -> dict[str, Any]:
-    after = _ledger_snapshot()
+def _ledger_delta(records: Sequence[llm.LedgerRecord]) -> dict[str, Any]:
+    """The run's own ledger rows plus the deploy-wide totals after it ran.
+
+    ``records`` is the run's collected rows (``llm.collect_ledger``), so a
+    concurrent request's rows can never be attributed to this run.
+    """
+    total_calls, total_cost_usd = _ledger_snapshot()
     return {
-        "calls": after.calls - before.calls,
-        "cost_usd": round(after.cost_usd - before.cost_usd, 6),
-        "total_calls": after.calls,
-        "total_cost_usd": round(after.cost_usd, 6),
+        "calls": len(records),
+        "cost_usd": round(sum(record.cost_usd for record in records), 6),
+        "total_calls": total_calls,
+        "total_cost_usd": round(total_cost_usd, 6),
+        "records": [record.model_dump() for record in records],
     }

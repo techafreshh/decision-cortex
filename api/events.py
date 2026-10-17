@@ -17,7 +17,9 @@ Frozen payloads (field names are snake_case, matching the rest of the API):
 - ``TEXT_MESSAGE_CONTENT`` — ``message_id``, ``delta`` (the sentence),
   ``chips`` (citation chips), ``cited`` (whether the sentence cleared its gate).
 - ``CYPHER_PREVIEW`` — ``queries`` (the Cypher strings retrieval actually ran).
-- ``LEDGER_UPDATE`` — ``ledger`` (the decision-ledger summary).
+- ``LEDGER_UPDATE`` — ``ledger`` (the decision-ledger summary: ``calls``,
+  ``cost_usd``, ``total_calls``, ``total_cost_usd``, and ``records`` — this
+  run's :class:`~api.llm.LedgerRecord` rows).
 - ``FAITHFULNESS_PENDING`` — no extra fields; the async scoring marker.
 - ``RUN_FINISHED`` — ``citation_count``, ``claims_total``, ``claims_cited``,
   ``abstention_required``, ``ledger``.
@@ -41,6 +43,31 @@ CYPHER_PREVIEW = "CYPHER_PREVIEW"
 LEDGER_UPDATE = "LEDGER_UPDATE"
 FAITHFULNESS_PENDING = "FAITHFULNESS_PENDING"
 RUN_FINISHED = "RUN_FINISHED"
+
+#: The frozen payload fields per event type (the always-present ``type`` key
+#: excluded). This is the single declared source of truth for the wire contract;
+#: the hand-written web mirror (``web/src/api/types.ts``) is bound to it by
+#: ``api/tests/test_wire_contract.py``, so the two cannot drift silently.
+EVENT_FIELDS: dict[str, tuple[str, ...]] = {
+    RUN_STARTED: ("question", "scenario"),
+    TOOL_CALL_START: ("tool_call_id", "tool_name"),
+    TOOL_CALL_ARGS: ("tool_call_id", "delta"),
+    TOOL_CALL_END: ("tool_call_id",),
+    TOOL_CALL_RESULT: ("tool_call_id", "result"),
+    TEXT_MESSAGE_START: ("message_id",),
+    TEXT_MESSAGE_CONTENT: ("message_id", "delta", "chips", "cited"),
+    TEXT_MESSAGE_END: ("message_id",),
+    CYPHER_PREVIEW: ("queries",),
+    LEDGER_UPDATE: ("ledger",),
+    FAITHFULNESS_PENDING: (),
+    RUN_FINISHED: (
+        "citation_count",
+        "claims_total",
+        "claims_cited",
+        "abstention_required",
+        "ledger",
+    ),
+}
 
 
 def sse_encode(event: Mapping[str, Any]) -> str:
