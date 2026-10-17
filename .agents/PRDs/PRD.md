@@ -91,7 +91,7 @@ The core value proposition has three parts. **(a) Provenance by construction:** 
 - [ ] Read-peephole MCP server (`@falkordb/mcpserver`): list / query — the product surface is the web app; don't over-invest
 
 **Tech & deployment**
-- [ ] FastAPI backend, React + Vite + CopilotKit + AG-UI (SSE) frontend, static bundle served by Caddy
+- [ ] FastAPI backend, React + Vite + AG-UI (SSE) frontend, static bundle served by Caddy
 - [ ] Docker Compose: `falkordb` (6.x, volume) + `api` + `web`; TLS; one-command local run
 - [ ] Live deployment on the VPS; seed-on-boot; demo answers cached; pre-baked dev cache for backup footage
 - [ ] CI: lint, unit, compose smoke
@@ -186,7 +186,7 @@ Agent core (FastAPI):
    RAGAS faithfulness (HHEM-2.1-Open, local CPU) scored per answer
         → "faithfulness 1.0 · 8/8 claims cited" badge (async, post-stream)
    Decision ledger → live UI footer (family pattern across Briefs 1–2)
-   ▼ AG-UI (SSE) → React (Vite) + CopilotKit UI
+   ▼ AG-UI (SSE) → React (Vite) UI
 ```
 
 ### 6.2 Key patterns
@@ -196,7 +196,7 @@ Agent core (FastAPI):
 - **Claim gate = the citation mechanism.** S2 emits sentence-by-sentence; per sentence, `decide()` maps it to evidence nodes (y/n + confidence). Uncited sentences are flagged; uncited key claims trigger abstention. The gate *is* the provenance path to the chips.
 - **Retrieval = graph-native.** Vector seed + full-text + multi-hop traversal in FalkorDB. Text-to-Cypher (SDK experimental) is a display flourish (CypherPeek), never the backbone.
 - **Idempotent ingestion.** Content-hash no-op writes via the SDK's incremental `apply_changes`; the committed snapshot makes judge-local replays deterministic and free.
-- **Generative UI.** Every backend tool call renders as a registered React component (render props fed by tool outputs), per the CopilotKit Jev-generative-UI pattern. AG-UI wiring decision at build time: LangGraph-native adapter vs. plain FastAPI emitting AG-UI events via the official Python SDK; fallback = hand-rolled SSE with the same event schema (UI unchanged).
+- **Generative UI.** Every backend tool call renders as a registered React component (render props fed by tool outputs), following the Jev-generative-UI pattern. AG-UI wiring: the SPA ships on the ladder's hand-rolled SSE rung (same event schema) with a tool→component registry; the CopilotKit runtime and the official Python SDK adapter remain additive options behind the same schema (UI unchanged).
 - **Demo determinism.** Seed-on-boot; scripted scenario buttons first, free chat second; demo answers cached.
 
 ### 6.3 Repository layout (suggested)
@@ -208,7 +208,7 @@ track3-decision-cortex/
 ├── snapshot/                # committed one-time corpus: rfcs.jsonl, pr-comments.jsonl, commits.jsonl
 ├── ingest/                  # parsers (emit plain dicts, no FalkorDB calls) + GraphRAG-SDK ingestion
 ├── api/                     # FastAPI agent core: router, gates, retrieval, synthesis, ledger
-├── web/                     # React + Vite SPA + CopilotKit components + shared kit
+├── web/                     # React + Vite SPA + AG-UI components + shared kit
 ├── verification/            # 30 gold + 10 no-record questions + eval runner
 ├── infra/                   # docker-compose.yml, Caddyfile, .env.example, CI
 ├── docs/                    # submission README, schema reference, blog seed
@@ -265,7 +265,7 @@ Read-peephole using `@falkordb/mcpserver`: list node labels/relations, run read-
 | S1 decision model | OpenRouter `decide()` — **slug TBD at build** | Jev-class candidate decided at build; wrapper abstracts the provider; **default config = small model with strict JSON schema** behind the same interface |
 | S2 synthesis model | OpenRouter `reason()` | Frontier reasoning LLM; slugs as config |
 | Faithfulness | RAGAS + **HHEM-2.1-Open** (local, **CPU-only** design) | Scored async post-stream; never blocks the answer |
-| UI | React + Vite SPA (no SSR/Next.js) + CopilotKit + AG-UI | Locked decision #5; static bundle via Caddy; AG-UI via official Python SDK first, hand-rolled SSE fallback |
+| UI | React + Vite SPA (no SSR/Next.js) + AG-UI (SSE) | Locked decision #5; static bundle via Caddy; ships on the ladder's hand-rolled SSE rung with a tool→component registry; CopilotKit runtime deferred (additive) |
 | Graph viz | React Flow | ImpactGraph |
 | MCP | `@falkordb/mcpserver` | Read-only peephole |
 | Deployment | Docker Compose + Caddy (TLS) on Techa's VPS | `falkordb` (volume) + `api` + `web`; seed-on-boot |
