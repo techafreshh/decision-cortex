@@ -62,7 +62,7 @@ The core value proposition has three parts. **(a) Provenance by construction:** 
 
 **Core functionality**
 - [ ] Q&A over the RFC corpus with **claim-level citations**: sentence-by-sentence answers, each sentence mapped to evidence nodes by the claim↔evidence gate; uncited sentences visually flagged
-- [ ] **Citation chips → SourcePanel**: every chip opens the actual RFC section (rendered markdown), the GitHub comment (author, date, stance), or the commit
+- [ ] **Citation chips → SourcePanel**: every chip opens the source's graph metadata (author, date, stance) and deep-links out to the RFC, the GitHub comment, or the commit (the graph stores refs, never bodies — §10)
 - [ ] **Principled abstention**: if key claims go uncited → answer abstains ("no record supports that — here's what the record does contain") with the `NoRecordCard` receipts (searched N nodes, M evidence chains, 0 matches) and the "proposals that came close" trail
 - [ ] **Impact Explorer**: click any Decision/Concept/Person → dependent subgraph blooms (React Flow); edges labeled by evidence type; hover-focus beat
 - [ ] **Timeline**: decisions over time with supersede arrows and loudest-voice stances; scripted "async/await lifecycle story" tour
@@ -238,7 +238,7 @@ track3-decision-cortex/
 | Component | Spec |
 |---|---|
 | `AnswerCard` | Sentence-by-sentence render; each sentence carries `CitationChip`(s); uncited sentences visually flagged |
-| `CitationChip` → `SourcePanel` | Chip opens the actual source: RFC section (markdown), GitHub comment (author, date, stance), or commit |
+| `CitationChip` → `SourcePanel` | Chip opens the source's graph metadata (author, date, stance) and deep-links out to the RFC, GitHub comment, or commit (refs, never bodies — §10) |
 | `NoRecordCard` | Abstention UI: "searched N nodes · M evidence chains · 0 matches"; the "three proposals came close" trail; runs on the verification set's no-record buttons |
 | `ImpactGraph` | React Flow; evidence-type edge colors/labels; node click → subgraph blooms; hover-focus beat |
 | `TimelineView` | Decisions over time, supersede arrows, stance highlights; scripted async/await tour |
@@ -330,7 +330,7 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 
 **SSE event flow (AG-UI schema):** `RUN_STARTED` → tool-call events (`router_classify`, `retrieve_evidence`, `claim_gate`, …) each rendering as registered generative-UI components with render props → `TEXT_MESSAGE_CONTENT` deltas (sentence-by-sentence, chips attached) → custom events (`cypher_preview` for CypherPeek, `ledger_update` for the footer, `faithfulness_pending`) → `RUN_FINISHED` (ledger summary + citation count).
 
-**Node detail (`GET /node/{id}`).** Resolves a citation-chip or inspector id to its graph node. The `label` is the schema label namespaced by the id prefix (`docs/graph-schema-notes.md` "Id namespacing"); `properties` are the node's stored graph properties (the derived `embedding` index artifact is omitted); `source` is a derived block carrying the canonical `url`, `author`, `date`, `stance`, and `truncated` when the node's schema declares them, and `null` otherwise. The graph stores only refs (`text_ref`, `content_ref`, `madr_link`) — never bodies — so `SourcePanel` renders this metadata and deep-links out to the real GitHub/RFC URL. Unknown id → 404. Response shape:
+**Node detail (`GET /node/{id}`).** Resolves a citation-chip or inspector id to its graph node. The `label` is the node's own schema label, read from the graph (`labels(n)`); `properties` are the node's stored graph properties (the derived `embedding` index artifact is omitted); `source` is a derived block carrying the canonical `url`, `author`, `date`, `stance`, and `truncated` when the node's schema declares them, and `null` otherwise. The graph stores only refs (`text_ref`, `content_ref`, `madr_link`) — never bodies — so `SourcePanel` renders this metadata and deep-links out to the real GitHub/RFC URL. Unknown id → 404. Response shape:
 
 ```json
 {

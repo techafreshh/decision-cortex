@@ -8,18 +8,21 @@ export interface NoRecordCardProps {
 }
 
 /**
- * The negative-proof moment: the pipeline found no decision answering the
- * question and shows its search receipts instead of confabulating — how many
- * nodes it searched, how many evidence chains it walked, and the real proposals
- * that came close.
+ * The negative-proof moment. A true negative (`matches === 0`) found no decision
+ * answering the question; a partial answer (`matches > 0`) grounded some claims
+ * but abstained on the rest. Both show their search receipts instead of
+ * confabulating — how many nodes were searched, how many evidence chains were
+ * walked, and the real proposals that came close.
  */
 export function NoRecordCard({ question, receipt }: NoRecordCardProps) {
+  const partial = receipt.matches > 0
   return (
-    <Card tone="warn" title="No record">
+    <Card tone="warn" title={partial ? 'Partial answer' : 'No record'}>
       <p className="norecord__question">{question}</p>
       <p className="norecord__verdict">
-        Decision Cortex found no decision answering this, so it abstains rather
-        than confabulate. Here are the receipts.
+        {partial
+          ? `Decision Cortex could only ground ${receipt.matches} of the claims here, so it abstains on the rest rather than confabulate. Here are the receipts.`
+          : 'Decision Cortex found no decision answering this, so it abstains rather than confabulate. Here are the receipts.'}
       </p>
       <dl className="receipts">
         <div className="receipts__row">

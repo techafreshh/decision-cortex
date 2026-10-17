@@ -39,7 +39,8 @@ import hashlib
 import os
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Annotated, Literal, overload
 
@@ -113,11 +114,35 @@ class LedgerRecord(BaseModel):
 _ledger_lock = threading.Lock()
 _ledger: list[LedgerRecord] = []
 
+#: Per-thread collector, active only while a run wraps its compute in
+#: :func:`collect_ledger`. A run computes its whole plan synchronously on one
+#: thread, so the rows it appends are exactly the rows this collects — never a
+#: concurrent request's, which slicing the shared ledger by position would leak.
+_ledger_local = threading.local()
+
+
+@contextmanager
+def collect_ledger() -> Iterator[list[LedgerRecord]]:
+    """Collect the records appended on this thread until the block exits.
+
+    Used by ``ask_events`` to attribute ledger rows to the run that produced
+    them. Nested collection is not supported — one run, one collector.
+    """
+    records: list[LedgerRecord] = []
+    _ledger_local.records = records
+    try:
+        yield records
+    finally:
+        del _ledger_local.records
+
 
 def ledger_append(record: LedgerRecord) -> LedgerRecord:
     """Append one fully-formed record to the decision ledger."""
     with _ledger_lock:
         _ledger.append(record)
+    collected = getattr(_ledger_local, "records", None)
+    if collected is not None:
+        collected.append(record)
     return record
 
 

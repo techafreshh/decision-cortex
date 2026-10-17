@@ -55,6 +55,21 @@ export type RunAction =
   | { kind: 'error'; message: string }
   | { kind: 'clear' }
 
+/**
+ * Whether the app shows the run view instead of the landing page. A failure
+ * before any stream event (a rejected `POST /ask`) must still leave the landing
+ * page behind, so `error` counts as a run.
+ */
+export function hasRun(state: RunState): boolean {
+  return (
+    state.running ||
+    state.error !== null ||
+    state.sentences.length > 0 ||
+    state.abstention !== null ||
+    state.finished
+  )
+}
+
 export const initialRunState: RunState = {
   question: '',
   scenario: null,

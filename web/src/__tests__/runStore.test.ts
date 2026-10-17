@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import type { AbstentionReceipt, AskEvent, LedgerSummary } from '../api/types'
-import { initialRunState, reduceRun, type RunAction } from '../state/runStore'
+import {
+  hasRun,
+  initialRunState,
+  reduceRun,
+  type RunAction,
+  type RunState,
+} from '../state/runStore'
 
 const event = (value: AskEvent): RunAction => ({ kind: 'event', event: value })
 
@@ -169,6 +175,13 @@ describe('reduceRun', () => {
     const state = reduceRun(running, { kind: 'error', message: 'boom' })
     expect(state.running).toBe(false)
     expect(state.error).toBe('boom')
+  })
+
+  it('shows the run view once a failure lands, so the error can render', () => {
+    const failed: RunState = { ...initialRunState, error: 'boom' }
+
+    expect(hasRun(failed)).toBe(true)
+    expect(hasRun(initialRunState)).toBe(false)
   })
 
   it('clear returns to the idle state', () => {

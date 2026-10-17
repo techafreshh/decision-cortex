@@ -121,7 +121,7 @@ their content is fully consolidated into the PRD and this file.)
 - Any change that alters a scripted scenario's expected output must update the
   cached answers and be gated behind a rehearsal.
 
-## Repository layout (planned — PRD §6.3)
+## Repository layout (PRD §6.3 — each dir lands with its phase)
 
 ```
 snapshot/      committed one-time JSONL corpus (rfcs, pr-comments, commits)
@@ -155,9 +155,9 @@ pip install -e '.[dev]'       # install api package + lint/test tooling
 ruff check .                  # lint (CI: ci.yml python job)
 pytest -q -m 'not integration and not live'   # offline unit tests
 scripts/run_scenario_api.sh <scratch_dir> <port>  # boot + readiness-probe /healthz
+npm --prefix web run build    # UI static bundle (web/ builds today)
 # planned, pending their phases:
 docker compose up --build     # full local brain (falkordb + api + web) — infra/ pending
-npm --prefix web run build    # UI static bundle — web/ pending
 # snapshot pull (Phase 0 only; needs vault GITHUB_TOKEN, rate-limit-safe)
 ```
 

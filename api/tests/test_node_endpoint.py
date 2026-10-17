@@ -13,7 +13,6 @@ from fastapi.testclient import TestClient
 
 from api import main, nodes
 from api.main import app
-from ingest import ontology
 
 
 class NodeReader:
@@ -28,17 +27,15 @@ class NodeReader:
         return [] if self.row is None else [self.row]
 
 
-def test_node_prefixes_match_the_schema() -> None:
-    declared = {entity.label for entity in ontology.SCHEMA.entities}
+def test_unlabelled_node_yields_an_empty_label() -> None:
+    # The query filters ``__Entity__`` out, so a node the schema does not label
+    # comes back with no labels and must not be given a prefix-derived one.
+    reader = NodeReader([[], {"id": "mystery:1"}])
 
-    assert set(nodes._LABEL_BY_PREFIX.values()) == declared
+    detail = nodes.node_detail(reader, "mystery:1")
 
-
-def test_label_from_id_decodes_the_namespace() -> None:
-    assert nodes.label_from_id("rfc:200") == "Decision"
-    assert nodes.label_from_id("message:5001") == "Message"
-    assert nodes.label_from_id("docversion:200") == "DocVersion"
-    assert nodes.label_from_id("nonsense:1") == ""
+    assert detail is not None
+    assert detail["label"] == ""
 
 
 def test_message_detail_carries_the_source_block() -> None:

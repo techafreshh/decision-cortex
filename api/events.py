@@ -44,6 +44,31 @@ LEDGER_UPDATE = "LEDGER_UPDATE"
 FAITHFULNESS_PENDING = "FAITHFULNESS_PENDING"
 RUN_FINISHED = "RUN_FINISHED"
 
+#: The frozen payload fields per event type (the always-present ``type`` key
+#: excluded). This is the single declared source of truth for the wire contract;
+#: the hand-written web mirror (``web/src/api/types.ts``) is bound to it by
+#: ``api/tests/test_wire_contract.py``, so the two cannot drift silently.
+EVENT_FIELDS: dict[str, tuple[str, ...]] = {
+    RUN_STARTED: ("question", "scenario"),
+    TOOL_CALL_START: ("tool_call_id", "tool_name"),
+    TOOL_CALL_ARGS: ("tool_call_id", "delta"),
+    TOOL_CALL_END: ("tool_call_id",),
+    TOOL_CALL_RESULT: ("tool_call_id", "result"),
+    TEXT_MESSAGE_START: ("message_id",),
+    TEXT_MESSAGE_CONTENT: ("message_id", "delta", "chips", "cited"),
+    TEXT_MESSAGE_END: ("message_id",),
+    CYPHER_PREVIEW: ("queries",),
+    LEDGER_UPDATE: ("ledger",),
+    FAITHFULNESS_PENDING: (),
+    RUN_FINISHED: (
+        "citation_count",
+        "claims_total",
+        "claims_cited",
+        "abstention_required",
+        "ledger",
+    ),
+}
+
 
 def sse_encode(event: Mapping[str, Any]) -> str:
     """Frame ``event`` as one SSE record: ``event:`` line, ``data:`` line, blank."""

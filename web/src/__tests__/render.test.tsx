@@ -90,6 +90,24 @@ describe('render smoke', () => {
     expect(html).toContain('>42<')
     expect(html).toContain('1 proposal came close')
     expect(html).toContain('rfc:123')
+    expect(html).toContain('found no decision answering this')
+  })
+
+  it('presents a partial answer as grounded-some, not a true negative', () => {
+    const html = render(
+      <NoRecordCard
+        question="Did Rust require unsafe attachments?"
+        receipt={{
+          nodes_searched: 42,
+          evidence_chains: 6,
+          matches: 2,
+          came_close: [],
+        }}
+      />,
+    )
+    expect(html).toContain('Partial answer')
+    expect(html).toContain('could only ground 2 of the claims')
+    expect(html).not.toContain('found no decision answering this')
   })
 
   it('renders the ledger footer with run and deploy totals', () => {
@@ -108,6 +126,15 @@ describe('render smoke', () => {
           cost_usd: 0.0003,
           escalated: false,
         },
+        {
+          input_digest: 'b',
+          choice: 'yes',
+          confidence: 0.42,
+          model: 'large',
+          latency_ms: 321,
+          cost_usd: 0.0006,
+          escalated: true,
+        },
       ],
     }
     const html = render(<LedgerFooter ledger={ledger} />)
@@ -116,6 +143,10 @@ describe('render smoke', () => {
     expect(html).toContain('$0.0009')
     expect(html).toContain('$0.0042')
     expect(html).toContain('small')
+    expect(html).toContain('0.42')
+    expect(html).toContain('321 ms')
+    expect(html).toContain('S2')
+    expect(html).toContain('S1')
   })
 
   it('renders CypherPeek collapsed and ShowYourWork with its tool count', () => {

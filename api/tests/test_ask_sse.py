@@ -8,6 +8,7 @@ network.
 from __future__ import annotations
 
 import json
+import threading
 
 import pytest
 from fakes import DispatchOpenRouter, evidence_node
@@ -144,3 +145,40 @@ def test_ledger_events_carry_this_runs_records(client: TestClient) -> None:
         }
 
     assert stream[-1]["ledger"]["records"] == records
+
+
+def test_ledger_records_do_not_leak_across_concurrent_runs(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A concurrent run's row must never be attributed to this run's footer."""
+    foreign = llm.LedgerRecord(
+        input_digest="foreign",
+        choice="yes",
+        confidence=0.5,
+        model="foreign-model",
+        latency_ms=1,
+        cost_usd=0.0,
+        escalated=False,
+    )
+
+    def fake_retrieve(question, route, **kwargs):
+        appender = threading.Thread(target=llm.ledger_append, args=(foreign,))
+        appender.start()
+        appender.join()
+        return retrieval.RetrievalResult(
+            evidence_nodes=(evidence_node("Decision", "rfc:200", title="Trait objects"),),
+            query_path=(),
+            candidate_count=1,
+            rounds=1,
+            stopped_early=True,
+            cypher=(),
+        )
+
+    monkeypatch.setattr(answer, "retrieve_evidence", fake_retrieve)
+
+    response = client.post("/ask", json={"question": "Who objected to trait objects?"})
+    stream = parse_sse(response.text)
+    ledger = next(event for event in stream if event["type"] == events.LEDGER_UPDATE)["ledger"]
+
+    assert "foreign-model" not in [record["model"] for record in ledger["records"]]
+    assert ledger["calls"] == len(ledger["records"])

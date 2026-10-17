@@ -10,16 +10,12 @@ import { OpenNodeProvider, SourcePanel } from './components/SourcePanel'
 import { ShowYourWork } from './components/ShowYourWork'
 import { Button } from './components/kit/Button'
 import { useAskStream } from './hooks/useAskStream'
+import { hasRun } from './state/runStore'
 
 function App() {
   const { state, ask, clear } = useAskStream()
   const [openNodeId, setOpenNodeId] = useState<string | null>(null)
-
-  const hasRun =
-    state.running ||
-    state.sentences.length > 0 ||
-    state.abstention !== null ||
-    state.finished
+  const showRun = hasRun(state)
 
   return (
     <OpenNodeProvider value={setOpenNodeId}>
@@ -29,9 +25,9 @@ function App() {
           <span className="app__tag">a company brain over rust-lang/rfcs</span>
         </header>
 
-        {hasRun ? null : <Landing onAsk={ask} disabled={state.running} />}
+        {showRun ? null : <Landing onAsk={ask} disabled={state.running} />}
 
-        {hasRun ? (
+        {showRun ? (
           <main className="app__main">
             <div className="app__question">
               <p className="app__questionText">{state.question}</p>

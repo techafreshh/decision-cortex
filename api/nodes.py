@@ -14,9 +14,9 @@ not hold. The ``embedding`` property is a derived vector-index artifact
 (``docs/graph-schema-notes.md`` "Retrieval indexes are derived, out-of-band
 data"), not a canonical property, so it is omitted from the response.
 
-The label is the schema label namespaced by the id prefix
-(``docs/graph-schema-notes.md`` "Id namespacing"); ``test_node_prefixes_match_
-the_schema`` pins :data:`_LABEL_BY_PREFIX` to ``ontology.SCHEMA``.
+The label is the node's own schema label, read straight from the query's
+``labels(n)`` result; every node carries exactly one such label
+(``ingest/graph.py``), so nothing is re-derived from the id.
 """
 
 from __future__ import annotations
@@ -25,22 +25,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from api.retrieval import GraphReader
-
-#: Id prefix -> schema label. Every node id is namespaced by its label
-#: (``docs/graph-schema-notes.md``); the prefix map is the canonical decoding.
-_LABEL_BY_PREFIX: dict[str, str] = {
-    "rfc": "Decision",
-    "person": "Person",
-    "message": "Message",
-    "commit": "Commit",
-    "docversion": "DocVersion",
-    "team": "Team",
-    "area": "Area",
-    "concept": "Concept",
-    "issue": "Issue",
-}
-
-_SCHEMA_LABELS = frozenset(_LABEL_BY_PREFIX.values())
 
 _NODE_QUERY = (
     "MATCH (n:__Entity__ {id: $id}) "
@@ -52,11 +36,6 @@ _NODE_QUERY = (
 _SOURCE_KEYS = ("url", "author", "date", "stance", "truncated")
 
 
-def label_from_id(node_id: str) -> str:
-    """The schema label namespaced by ``node_id``'s prefix, or ``""`` if unknown."""
-    return _LABEL_BY_PREFIX.get(node_id.split(":", 1)[0], "")
-
-
 def node_detail(reader: GraphReader, node_id: str) -> dict[str, Any] | None:
     """Resolve ``node_id`` to ``{id, label, properties, source}``; ``None`` if absent."""
     rows = reader.query(_NODE_QUERY, {"id": node_id})
@@ -65,13 +44,18 @@ def node_detail(reader: GraphReader, node_id: str) -> dict[str, Any] | None:
     labels, raw_properties = rows[0][0], rows[0][1]
     properties = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
     properties.pop("embedding", None)
-    label = _resolve_label(node_id, labels)
+    label = _schema_label(labels)
     return {
         "id": node_id,
         "label": label,
         "properties": properties,
         "source": source_block(label, properties),
     }
+
+
+def _schema_label(labels: Sequence[Any]) -> str:
+    """The node's schema label; ``""`` for a node the schema does not label."""
+    return str(labels[0]) if labels else ""
 
 
 def source_block(label: str, properties: Mapping[str, Any]) -> dict[str, Any]:
@@ -97,11 +81,3 @@ def source_block(label: str, properties: Mapping[str, Any]) -> dict[str, Any]:
     elif label in ("Commit", "Issue"):
         block["date"] = properties.get("ts")
     return block
-
-
-def _resolve_label(node_id: str, labels: Sequence[Any]) -> str:
-    """Prefer the node's declared schema label, falling back to its id prefix."""
-    for name in labels:
-        if name in _SCHEMA_LABELS:
-            return str(name)
-    return label_from_id(node_id)
