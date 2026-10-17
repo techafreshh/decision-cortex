@@ -122,6 +122,8 @@ def test_fulltext_seed_and_expansion_build_evidence_and_path() -> None:
     assert retrieval.QueryStep("query", "SEED_FULLTEXT", "rfc:200") in result.query_path
     assert retrieval.QueryStep("person:bob", "OBJECTED", "rfc:200") in result.query_path
     assert not reader.called("vector.queryNodes")
+    assert any(retrieval._OUT_QUERY in query for query in result.cypher)
+    assert any(retrieval._IN_QUERY in query for query in result.cypher)
 
 
 def test_fulltext_seed_respects_top_k_and_ranks_by_score() -> None:
@@ -177,6 +179,7 @@ def test_vector_seed_used_and_merged_with_fulltext() -> None:
 
     assert reader.called("vector.queryNodes")
     assert result.candidate_count == 1
+    assert any(retrieval._VECTOR_QUERY in query for query in result.cypher)
     seed = result.evidence_nodes[0]
     assert seed.source == "vector"
     assert retrieval.QueryStep("query", "SEED_VECTOR", "rfc:200") in result.query_path
@@ -406,3 +409,14 @@ def test_retrieval_relations_match_the_schema() -> None:
 
     assert set(retrieval._OUT_RELATIONS) == decision_out
     assert set(retrieval._IN_RELATIONS) == decision_in
+
+
+def test_node_title_properties_match_the_schema() -> None:
+    declared = {
+        entity.label: {prop.name for prop in entity.properties}
+        for entity in ontology.SCHEMA.entities
+    }
+
+    assert set(retrieval._DISPLAY_PROPERTIES) == set(declared)
+    for label, property_name in retrieval._DISPLAY_PROPERTIES.items():
+        assert property_name in declared[label]

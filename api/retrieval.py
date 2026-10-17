@@ -116,6 +116,37 @@ class EvidenceNode:
     score: float | None
 
 
+#: Each label's human-readable display property. The graph schema declares a
+#: different property per label (``Person.handle``, ``Commit.message``,
+#: ``DocVersion.content_ref``, …), so a fixed ``title``/``name`` lookup would
+#: show the raw id for most non-``Decision`` nodes. ``Message`` has no text
+#: property, only the ``text_ref`` permalink, so that is its display value.
+#: ``test_node_title_properties_match_the_schema`` pins this to the schema.
+_DISPLAY_PROPERTIES: dict[str, str] = {
+    "Decision": "title",
+    "Issue": "title",
+    "Person": "handle",
+    "Team": "name",
+    "Area": "name",
+    "Concept": "name",
+    "Commit": "message",
+    "DocVersion": "content_ref",
+    "Message": "text_ref",
+}
+
+
+def node_title(node: EvidenceNode) -> str:
+    """The node's human-readable title, falling back to its id."""
+    property_name = _DISPLAY_PROPERTIES.get(node.label)
+    value = node.properties.get(property_name) if property_name else None
+    return str(value) if value else node.id
+
+
+def evidence_line(node: EvidenceNode) -> str:
+    """One prompt/chip line for a node: ``Label id: title``."""
+    return f"{node.label} {node.id}: {node_title(node)}"
+
+
 @dataclass(frozen=True, slots=True)
 class QueryStep:
     """One traversed edge (or seed) on the query path."""
@@ -132,6 +163,9 @@ class RetrievalResult:
     candidate_count: int
     rounds: int
     stopped_early: bool
+    #: The Cypher strings actually executed, in order — the honest source for
+    #: CypherPeek, not a reconstruction from ``query_path``.
+    cypher: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +267,7 @@ def retrieve_evidence(
 
     evidence: dict[str, EvidenceNode] = {}
     path: list[QueryStep] = []
+    queries: list[str] = []
     embed_latency_ms = 0
     embed_cost_usd = 0.0
 
@@ -240,12 +275,16 @@ def retrieve_evidence(
         trace = active_embedder(question)
         embed_latency_ms = trace.latency_ms
         embed_cost_usd = trace.cost_usd
+        queries.append(_VECTOR_QUERY)
         for node in _vector_seed(active_reader, trace.vector, top_k):
             if node.id not in evidence:
                 evidence[node.id] = node
                 path.append(QueryStep("query", "SEED_VECTOR", node.id))
 
-    for node in _fulltext_seed(active_reader, question, top_k):
+    fulltext_terms = _fulltext_terms(question)
+    if fulltext_terms:
+        queries.append(_FULLTEXT_QUERY)
+    for node in _fulltext_seed(active_reader, fulltext_terms, top_k):
         if node.id not in evidence:
             evidence[node.id] = node
             path.append(QueryStep("query", "SEED_FULLTEXT", node.id))
@@ -256,6 +295,8 @@ def retrieve_evidence(
     for round_index in range(1, max_rounds + 1):
         if not frontier:
             break
+        queries.append(_OUT_QUERY)
+        queries.append(_IN_QUERY)
         new_nodes, new_steps, next_frontier = _expand(active_reader, frontier)
         for node in new_nodes:
             evidence.setdefault(node.id, node)
@@ -276,6 +317,7 @@ def retrieve_evidence(
         candidate_count=len(evidence),
         rounds=rounds,
         stopped_early=stopped_early,
+        cypher=tuple(queries),
     )
 
 
@@ -311,10 +353,9 @@ def _vector_seed(
 
 
 def _fulltext_seed(
-    reader: GraphReader, question: str, top_k: int
+    reader: GraphReader, terms: Sequence[str], top_k: int
 ) -> list[EvidenceNode]:
     """Full-text seed over ``Decision.title``; terms are OR-ed so any match counts."""
-    terms = _fulltext_terms(question)
     if not terms:
         return []
     rows = reader.query(_FULLTEXT_QUERY, {"q": "|".join(terms)})
