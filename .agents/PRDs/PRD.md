@@ -330,6 +330,8 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 
 **SSE event flow (AG-UI schema):** `RUN_STARTED` → tool-call events (`router_classify`, `retrieve_evidence`, `claim_gate`, …) each rendering as registered generative-UI components with render props → `TEXT_MESSAGE_CONTENT` deltas (sentence-by-sentence, chips attached) → custom events (`cypher_preview` for CypherPeek, `ledger_update` for the footer, `faithfulness_pending`) → `RUN_FINISHED` (ledger summary + citation count).
 
+**Abstention payload (`record_abstention` tool result).** When an answer abstains — a key claim is uncited, or the router returned `out-of-graph` — the stream emits one more tool call after `TEXT_MESSAGE_END` and before `faithfulness_pending`: `record_abstention` → `TOOL_CALL_RESULT.result` = `{nodes_searched, evidence_chains, matches, came_close}`. `nodes_searched` is the candidate evidence count; `evidence_chains` is the number of traversed (non-seed) query-path steps; `matches` is the cited-claim count (0 for a true negative); `came_close` is a list of `{id, label, title}` citation chips for the closest real seed decisions the search reached — empty when nothing came close, and never a fabricated near-miss. Each abstention appends one decision-ledger row (`abstention:no-record`). The web `NoRecordCard` (#10) renders this result; no new SSE event constant is introduced.
+
 **MCP tools:** `list_labels`, `list_relations`, `query_cypher` (read-only, timeout-guarded) — via `@falkordb/mcpserver` (streamable HTTP).
 
 ---
