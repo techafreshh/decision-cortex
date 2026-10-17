@@ -1,0 +1,162 @@
+import { describe, expect, it } from 'vitest'
+
+import type { AbstentionReceipt, AskEvent, LedgerSummary } from '../api/types'
+import { initialRunState, reduceRun, type RunAction } from '../state/runStore'
+
+const event = (value: AskEvent): RunAction => ({ kind: 'event', event: value })
+
+function fold(actions: RunAction[]) {
+  return actions.reduce(reduceRun, initialRunState)
+}
+
+const LEDGER: LedgerSummary = {
+  calls: 1,
+  cost_usd: 0.0004,
+  total_calls: 7,
+  total_cost_usd: 0.0031,
+  records: [
+    {
+      input_digest: 'abc',
+      choice: 'graph',
+      confidence: 0.91,
+      model: 'small',
+      latency_ms: 120,
+      cost_usd: 0.0004,
+      escalated: false,
+    },
+  ],
+}
+
+describe('reduceRun', () => {
+  it('starts empty and idle', () => {
+    expect(initialRunState.running).toBe(false)
+    expect(initialRunState.traces).toEqual([])
+    expect(initialRunState.sentences).toEqual([])
+    expect(initialRunState.abstention).toBeNull()
+  })
+
+  it('reset marks the run in flight and records the question', () => {
+    const state = reduceRun(initialRunState, {
+      kind: 'reset',
+      request: { question: 'who objected?' },
+    })
+    expect(state.running).toBe(true)
+    expect(state.question).toBe('who objected?')
+    expect(state.scenario).toBeNull()
+  })
+
+  it('records a scripted scenario on reset', () => {
+    const state = reduceRun(initialRunState, {
+      kind: 'reset',
+      request: { scenario: 'prove_negative' },
+    })
+    expect(state.scenario).toBe('prove_negative')
+    expect(state.question).toBe('')
+  })
+
+  it('builds a trace from start/args/result', () => {
+    const state = fold([
+      event({ type: 'TOOL_CALL_START', tool_call_id: 'router_classify', tool_name: 'router_classify' }),
+      event({ type: 'TOOL_CALL_ARGS', tool_call_id: 'router_classify', delta: '{"route":"graph"}' }),
+      event({
+        type: 'TOOL_CALL_RESULT',
+        tool_call_id: 'router_classify',
+        result: { route: 'graph', confidence: 0.9, escalated: false },
+      }),
+    ])
+    expect(state.traces).toEqual([
+      {
+        toolName: 'router_classify',
+        status: 'done',
+        args: '{"route":"graph"}',
+        result: { route: 'graph', confidence: 0.9, escalated: false },
+      },
+    ])
+  })
+
+  it('captures the abstention receipt from record_abstention', () => {
+    const receipt: AbstentionReceipt = {
+      nodes_searched: 42,
+      evidence_chains: 6,
+      matches: 0,
+      came_close: [{ id: 'rfc:123', label: 'Decision', title: 'unsafe attachments' }],
+    }
+    const state = fold([
+      event({ type: 'TOOL_CALL_START', tool_call_id: 'record_abstention', tool_name: 'record_abstention' }),
+      event({ type: 'TOOL_CALL_RESULT', tool_call_id: 'record_abstention', result: receipt }),
+    ])
+    expect(state.abstention).toEqual(receipt)
+  })
+
+  it('accumulates answer sentences in order', () => {
+    const state = fold([
+      event({ type: 'TEXT_MESSAGE_START', message_id: 'answer' }),
+      event({
+        type: 'TEXT_MESSAGE_CONTENT',
+        message_id: 'answer',
+        delta: 'Rust decided X.',
+        chips: [{ id: 'rfc:1', label: 'Decision', title: 'X' }],
+        cited: true,
+      }),
+      event({
+        type: 'TEXT_MESSAGE_CONTENT',
+        message_id: 'answer',
+        delta: 'Someone objected.',
+        chips: [],
+        cited: false,
+      }),
+    ])
+    expect(state.sentences).toEqual([
+      {
+        text: 'Rust decided X.',
+        chips: [{ id: 'rfc:1', label: 'Decision', title: 'X' }],
+        cited: true,
+      },
+      { text: 'Someone objected.', chips: [], cited: false },
+    ])
+  })
+
+  it('records the Cypher retrieval ran', () => {
+    const state = fold([
+      event({ type: 'CYPHER_PREVIEW', queries: ['MATCH (n) RETURN n'] }),
+    ])
+    expect(state.queries).toEqual(['MATCH (n) RETURN n'])
+  })
+
+  it('flags faithfulness scoring and lands the ledger on finish', () => {
+    const state = fold([
+      event({ type: 'FAITHFULNESS_PENDING' }),
+      event({ type: 'LEDGER_UPDATE', ledger: LEDGER }),
+      event({
+        type: 'RUN_FINISHED',
+        citation_count: 1,
+        claims_total: 1,
+        claims_cited: 1,
+        abstention_required: false,
+        ledger: LEDGER,
+      }),
+    ])
+    expect(state.faithfulnessPending).toBe(true)
+    expect(state.finished).toBe(true)
+    expect(state.running).toBe(false)
+    expect(state.ledger).toEqual(LEDGER)
+  })
+
+  it('records an error and stops the run', () => {
+    const running = reduceRun(initialRunState, {
+      kind: 'reset',
+      request: { question: 'q' },
+    })
+    const state = reduceRun(running, { kind: 'error', message: 'boom' })
+    expect(state.running).toBe(false)
+    expect(state.error).toBe('boom')
+  })
+
+  it('clear returns to the idle state', () => {
+    const state = reduceRun(
+      reduceRun(initialRunState, { kind: 'reset', request: { question: 'q' } }),
+      { kind: 'clear' },
+    )
+    expect(state).toEqual(initialRunState)
+  })
+})
