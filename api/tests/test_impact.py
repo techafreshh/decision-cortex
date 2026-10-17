@@ -36,9 +36,9 @@ class ImpactReader:
         if "startNode(r).id" in cypher:
             rows: list[list[Any]] = []
             for origin in params["ids"]:
-                for relation, src, dst, neighbor in self.neighbors.get(origin, []):
+                for relation, src, dst, edge_props, neighbor in self.neighbors.get(origin, []):
                     node_id, labels, props = neighbor
-                    rows.append([origin, relation, {}, src, dst, node_id, labels, props])
+                    rows.append([origin, relation, edge_props, src, dst, node_id, labels, props])
             return rows
         if "MATCH (n:__Entity__ {id: $id})" in cypher:
             return [] if self.seed is None else [self.seed]
@@ -62,19 +62,32 @@ def test_bfs_assigns_min_depth_and_dedupes_edges() -> None:
         seed=["Decision", {"id": "rfc:1", "title": "Seed"}],
         neighbors={
             "rfc:1": [
-                ("AREA", "rfc:1", "area:async", ("area:async", ["Area"], {"name": "async"})),
+                (
+                    "AREA",
+                    "rfc:1",
+                    "area:async",
+                    {},
+                    ("area:async", ["Area"], {"name": "async"}),
+                ),
                 (
                     "PROPOSED_BY",
                     "rfc:1",
                     "person:alice",
+                    {},
                     ("person:alice", ["Person"], {"handle": "alice"}),
                 ),
             ],
             "area:async": [
-                ("AREA", "rfc:2", "area:async", decision("rfc:2", "Second")),
+                ("AREA", "rfc:2", "area:async", {}, decision("rfc:2", "Second")),
             ],
             "person:alice": [
-                ("OBJECTED", "person:alice", "rfc:1", decision("rfc:1", "Seed")),
+                (
+                    "OBJECTED",
+                    "person:alice",
+                    "rfc:1",
+                    {"evidence": "https://example.test/comment/1", "confidence": 0.9},
+                    decision("rfc:1", "Seed"),
+                ),
             ],
         },
     )
@@ -92,6 +105,16 @@ def test_bfs_assigns_min_depth_and_dedupes_edges() -> None:
     edge_keys = [(edge["src"], edge["dst"], edge["type"]) for edge in result["edges"]]
     assert edge_keys.count(("person:alice", "rfc:1", "OBJECTED")) == 1
     assert ("rfc:1", "area:async", "AREA") in edge_keys
+    # The stance edge carries its provenance (`{evidence, confidence}`) through.
+    objected = next(
+        edge
+        for edge in result["edges"]
+        if (edge["src"], edge["dst"], edge["type"]) == ("person:alice", "rfc:1", "OBJECTED")
+    )
+    assert objected["properties"] == {
+        "evidence": "https://example.test/comment/1",
+        "confidence": 0.9,
+    }
     assert result["evidence_types"] == ["AREA", "OBJECTED", "PROPOSED_BY"]
     assert result["truncated"] is False
 
@@ -100,8 +123,8 @@ def test_depth_limits_the_walk() -> None:
     reader = ImpactReader(
         seed=["Decision", {"id": "rfc:1", "title": "Seed"}],
         neighbors={
-            "rfc:1": [("AREA", "rfc:1", "area:a", ("area:a", ["Area"], {"name": "a"}))],
-            "area:a": [("AREA", "rfc:2", "area:a", decision("rfc:2", "Two"))],
+            "rfc:1": [("AREA", "rfc:1", "area:a", {}, ("area:a", ["Area"], {"name": "a"}))],
+            "area:a": [("AREA", "rfc:2", "area:a", {}, decision("rfc:2", "Two"))],
         },
     )
 
@@ -117,8 +140,8 @@ def test_node_cap_truncates_and_drops_dangling_edges(monkeypatch: pytest.MonkeyP
         seed=["Decision", {"id": "rfc:1", "title": "Seed"}],
         neighbors={
             "rfc:1": [
-                ("PROPOSED_BY", "rfc:1", "person:a", person("person:a", "a")),
-                ("PROPOSED_BY", "rfc:1", "person:b", person("person:b", "b")),
+                ("PROPOSED_BY", "rfc:1", "person:a", {}, person("person:a", "a")),
+                ("PROPOSED_BY", "rfc:1", "person:b", {}, person("person:b", "b")),
             ]
         },
     )
@@ -140,7 +163,7 @@ def test_endpoint_returns_the_impact_subgraph(monkeypatch: pytest.MonkeyPatch) -
         seed=["Decision", {"id": "rfc:1", "title": "Seed"}],
         neighbors={
             "rfc:1": [
-                ("AREA", "rfc:1", "area:a", ("area:a", ["Area"], {"name": "a"})),
+                ("AREA", "rfc:1", "area:a", {}, ("area:a", ["Area"], {"name": "a"})),
             ]
         },
     )

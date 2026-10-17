@@ -7,9 +7,10 @@ abstention receipt). ``render_graph`` returns the impact payload for download.
 
 Both are pure reads: a scenario report replays :data:`api.cache.cache` and a
 node report reads the graph — neither calls an LLM, so exports cost nothing.
-An unknown node is a ``404``, an unknown scenario name a ``400``, and a
-scenario that has not been computed yet a ``409`` (run it in the UI first), so a
-download can never silently fabricate an answer.
+A request that names neither or both selectors is a ``400``, an unknown node a
+``404``, an unknown scenario name a ``400``, and a scenario that has not been
+computed yet a ``409`` (run it in the UI first), so a download can never
+silently fabricate an answer.
 """
 
 from __future__ import annotations
@@ -22,14 +23,6 @@ from api.cache import cache
 from api.impact import IMPACT_MAX_DEPTH, build_impact
 from api.nodes import node_detail, source_block
 from api.retrieval import GraphReader, display_name, node_title
-
-_SOURCE_LABELS = (
-    ("url", "url"),
-    ("author", "author"),
-    ("date", "date"),
-    ("stance", "stance"),
-    ("truncated", "truncated"),
-)
 
 
 class ExportError(Exception):
@@ -48,6 +41,8 @@ def render_report(
     scenario: str | None = None,
 ) -> str:
     """Render the Markdown report for ``node_id`` or a cached ``scenario``."""
+    if node_id is not None and scenario is not None:
+        raise ExportError(400, "provide either node_id or scenario, not both")
     if node_id is not None:
         detail = node_detail(reader, node_id)
         if detail is None:
@@ -88,8 +83,8 @@ def _render_node_report(reader: GraphReader, detail: dict[str, Any]) -> str:
     source = detail["source"]
     title = display_name(label, properties) or node_id
     lines = [f"# {label} {node_id}: {title}", "", "## Source", ""]
-    for key, text in _SOURCE_LABELS:
-        lines.append(f"- {text}: {_format_value(source.get(key))}")
+    for key in source:
+        lines.append(f"- {key}: {_format_value(source[key])}")
     lines.extend(["", "## Properties", ""])
     for key in sorted(properties):
         lines.append(f"- {key}: {_format_value(properties[key])}")

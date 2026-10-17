@@ -75,6 +75,11 @@ def test_decisions_are_chronological_with_relations_attached() -> None:
     assert first["teams"] == []
     assert first["superseded_by"] == [2]
     assert [stance["handle"] for stance in first["stances"]] == ["bob", "carol"]
+    # Each stance carries its provenance (`{evidence, confidence}`) for jump-to-source.
+    assert first["stances"] == [
+        {"handle": "bob", "kind": "SUPPORTED", "evidence": "b", "confidence": 0.9},
+        {"handle": "carol", "kind": "OBJECTED", "evidence": "c", "confidence": 0.4},
+    ]
     assert result["supersede_edges"] == [{"src": "rfc:2", "dst": "rfc:1"}]
     assert result["decisions"][1]["supersedes"] == [1]
     assert result["areas"] == ["async", "privacy"]

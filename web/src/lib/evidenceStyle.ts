@@ -33,8 +33,3 @@ export function evidenceStyle(kind: string): EvidenceStyle {
     STYLES[kind] ?? { label: kind.toLowerCase(), tone: 'plain', color: 'var(--accent)' }
   )
 }
-
-/** The label the Impact Explorer and Timeline show for a relation/stance kind. */
-export function evidenceLabel(kind: string): string {
-  return evidenceStyle(kind).label
-}

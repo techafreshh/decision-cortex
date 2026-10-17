@@ -17,7 +17,10 @@ import pytest
 
 from api import events, impact, nodes, timeline, tours
 
-_TYPES_TS = Path(__file__).resolve().parents[2] / "web" / "src" / "api" / "types.ts"
+_WEB_SRC = Path(__file__).resolve().parents[2] / "web" / "src"
+_TYPES_TS = _WEB_SRC / "api" / "types.ts"
+_EVIDENCE_STYLE_TS = _WEB_SRC / "lib" / "evidenceStyle.ts"
+_TIMELINE_VIEW_TSX = _WEB_SRC / "components" / "TimelineView.tsx"
 
 
 @pytest.fixture(scope="module")
@@ -25,6 +28,13 @@ def types_source() -> str:
     if not _TYPES_TS.exists():
         pytest.skip(f"web mirror not present: {_TYPES_TS}")
     return _TYPES_TS.read_text(encoding="utf-8")
+
+
+def _object_literal_keys(path: Path, declaration: str) -> set[str]:
+    """The top-level keys of the object literal assigned after ``declaration``."""
+    source = path.read_text(encoding="utf-8")
+    body = source.split(declaration, 1)[1].split("\n}", 1)[0]
+    return set(re.findall(r"^\s*(\w+):", body, re.MULTILINE))
 
 
 def _declared_event_names(source: str) -> set[str]:
@@ -82,3 +92,17 @@ def test_tour_wire_fields_match_the_backend(types_source: str) -> None:
     assert _interface_fields(types_source, "Tour") == set(tours.TOUR_KEYS)
     assert _interface_fields(types_source, "TourStage") == set(tours.TOUR_STAGE_KEYS)
     assert _interface_fields(types_source, "TourTransition") == set(tours.TOUR_TRANSITION_KEYS)
+
+
+def test_impact_relation_styles_cover_the_backend() -> None:
+    if not _EVIDENCE_STYLE_TS.exists():
+        pytest.skip(f"web mirror not present: {_EVIDENCE_STYLE_TS}")
+    styles = _object_literal_keys(_EVIDENCE_STYLE_TS, "const STYLES")
+    assert set(impact.IMPACT_RELATIONS) <= styles
+
+
+def test_tour_labels_cover_the_backend() -> None:
+    if not _TIMELINE_VIEW_TSX.exists():
+        pytest.skip(f"web mirror not present: {_TIMELINE_VIEW_TSX}")
+    labels = _object_literal_keys(_TIMELINE_VIEW_TSX, "const TOUR_LABELS")
+    assert set(tours.TOURS) <= labels

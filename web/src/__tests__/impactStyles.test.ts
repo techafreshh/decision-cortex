@@ -1,13 +1,15 @@
 /**
- * `evidenceStyle` is the single mapping from a graph relation/stance kind to the
- * label and colour the Impact Explorer and Timeline render. These tests pin the
- * full vocabulary (`api/impact.py::IMPACT_RELATIONS`) and the unknown-kind
- * degradation, since a silent gap here would make an edge vanish from the graph.
+ * `evidenceStyle` is the mapping from a graph relation/stance kind to the label
+ * and colour the Impact Explorer and Timeline render. The full vocabulary
+ * (`api/impact.py::IMPACT_RELATIONS`) is bound to `STYLES` by
+ * `api/tests/test_wire_contract.py`; these tests cover the per-kind rendering
+ * and the unknown-kind degradation, since a silent gap would make an edge
+ * vanish from the graph.
  */
 
 import { describe, expect, it } from 'vitest'
 
-import { evidenceLabel, evidenceStyle } from '../lib/evidenceStyle'
+import { evidenceStyle } from '../lib/evidenceStyle'
 
 const RELATIONS = [
   'ABOUT',
@@ -42,6 +44,5 @@ describe('evidenceStyle', () => {
     const style = evidenceStyle('MYSTERY_EDGE')
     expect(style.label).toBe('mystery_edge')
     expect(style.tone).toBe('plain')
-    expect(evidenceLabel('MYSTERY_EDGE')).toBe('mystery_edge')
   })
 })

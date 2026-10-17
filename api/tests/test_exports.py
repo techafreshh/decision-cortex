@@ -157,6 +157,13 @@ def test_missing_arguments_raise_400() -> None:
     assert error.value.status_code == 400
 
 
+def test_both_selectors_raise_400() -> None:
+    with pytest.raises(exports.ExportError) as error:
+        exports.render_report(_reader(), node_id="rfc:2394", scenario="ask_corpus")
+
+    assert error.value.status_code == 400
+
+
 def test_render_graph_returns_the_impact_payload() -> None:
     payload = exports.render_graph(_reader(), "rfc:2394")
 
@@ -205,6 +212,17 @@ def test_report_endpoint_returns_404_for_an_unknown_node(monkeypatch: pytest.Mon
         response = client.post("/exports/report", json={"node_id": "rfc:999"})
 
     assert response.status_code == 404
+
+
+def test_report_endpoint_rejects_both_selectors(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(main, "connect_from_env", _reader)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/exports/report", json={"node_id": "rfc:2394", "scenario": "ask_corpus"}
+        )
+
+    assert response.status_code == 400
 
 
 def test_graph_endpoint_downloads_json(monkeypatch: pytest.MonkeyPatch) -> None:

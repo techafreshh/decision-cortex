@@ -37,8 +37,6 @@ TIMELINE_DECISION_KEYS = (
 STANCE_KEYS = ("handle", "kind", "evidence", "confidence")
 SUPERSEDE_EDGE_KEYS = ("src", "dst")
 
-_STANCE_RELATIONS = ("OBJECTED", "SUPPORTED", "MODERATED")
-
 _DECISIONS_QUERY = "MATCH (d:Decision) RETURN d"
 _DECISION_AREAS_QUERY = "MATCH (d:Decision)-[:AREA]->(a:Area) RETURN d.id, a.name"
 _DECISION_TEAMS_QUERY = "MATCH (d:Decision)-[:ASSOCIATED_TEAM]->(t:Team) RETURN d.id, t.name"
@@ -104,7 +102,7 @@ def build_timeline(
     selected = {
         node_id: decision
         for node_id, decision in decisions.items()
-        if _matches(decision, node_id, areas_by_decision, teams_by_decision, area, team)
+        if _matches(node_id, areas_by_decision, teams_by_decision, area, team)
     }
     for node_id, decision in selected.items():
         decision["areas"] = sorted(areas_by_decision.get(node_id, set()))
@@ -138,7 +136,6 @@ def build_timeline(
 
 
 def _matches(
-    decision: dict[str, Any],
     node_id: str,
     areas: dict[str, set[str]],
     teams: dict[str, set[str]],
