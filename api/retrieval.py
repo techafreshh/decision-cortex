@@ -47,7 +47,7 @@ _OUT_RELATIONS = (
 #: §15.3 relations whose target is the Decision (stance edges plus supersession).
 _IN_RELATIONS = ("OBJECTED", "SUPPORTED", "MODERATED", "SUPERSEDES")
 #: Query-path relations marking a seed node rather than a traversed §15.3 edge.
-_SEED_RELATIONS = ("SEED_VECTOR", "SEED_FULLTEXT")
+SEED_RELATIONS = ("SEED_VECTOR", "SEED_FULLTEXT")
 
 _OUT_QUERY = (
     "MATCH (d:Decision)-[r]->(n) "
@@ -454,14 +454,14 @@ def _sufficiency_facts(
         decision_count=sum(1 for node in evidence.values() if node.label == "Decision"),
         evidence_type_counts=_relation_counts(path),
         top_score=_top_seed_score(evidence),
-        seed_count=sum(1 for step in path if step.relation in _SEED_RELATIONS),
+        seed_count=sum(1 for step in path if step.relation in SEED_RELATIONS),
         round_index=round_index,
         max_rounds=max_rounds,
     )
 
 
 def _relation_counts(path: Sequence[QueryStep]) -> dict[str, int]:
-    counts = Counter(step.relation for step in path if step.relation not in _SEED_RELATIONS)
+    counts = Counter(step.relation for step in path if step.relation not in SEED_RELATIONS)
     return dict(sorted(counts.items()))
 
 
