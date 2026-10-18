@@ -47,8 +47,13 @@ from api import llm
 
 logger = logging.getLogger(__name__)
 
-#: The local cross-encoder that grounds the badge (PRD §8: RAGAS + HHEM-2.1-Open).
-HHEM_MODEL_ID = "vectara/hhallucination_evaluation_model"
+#: The local cross-encoder that grounds the badge: **HHEM-2.1-Open**, whose
+#: public Hugging Face home is ``vectara/hhallucination_evaluation_model``…
+#: note the unauthenticated-download id is the single-h spelling below (the
+#: double-h alias is gated behind an HF token, HTTP 401 headless — verified
+#: against the hub API). The model card pins polarity: ``predict()`` returns
+#: 0..1 where 1 = the hypothesis is fully supported by the premise.
+HHEM_MODEL_ID = "vectara/hallucination_evaluation_model"
 
 #: Claims scoring at/above this consistency probability count as supported.
 DEFAULT_THRESHOLD = 0.5
@@ -60,10 +65,6 @@ THRESHOLD_ENV = "FAITHFULNESS_THRESHOLD"
 #: changes the polarity assumption — re-run the sanity check in
 #: ``docs/faithfulness-notes.md`` before trusting the badge.
 MODEL_ID_ENV = "FAITHFULNESS_MODEL_ID"
-
-#: HHEM's tokenizer input budget; premises are already bounded per evidence
-#: text by :data:`api.evidence_text.EVIDENCE_TEXT_LIMIT`.
-_MAX_LENGTH = 512
 
 _BATCH_SIZE = 8
 
@@ -275,31 +276,33 @@ class HHEMScorer:
         self._model_id = model_id
         self._batch_size = batch_size
         self._lock = threading.Lock()
-        self._loaded: tuple[Any, Any, Any] | None = None
+        self._loaded: tuple[Any, Any] | None = None
 
     @property
     def model_id(self) -> str:
         return self._model_id
 
-    def _load(self) -> tuple[Any, Any, Any]:
+    def _load(self) -> tuple[Any, Any]:
         if self._loaded is None:
             with self._lock:
                 if self._loaded is None:
                     try:
                         import torch
-                        from transformers import (
-                            AutoModelForSequenceClassification,
-                            AutoTokenizer,
-                        )
+                        from transformers import AutoModelForSequenceClassification
                     except ImportError as exc:
                         raise FaithfulnessUnavailableError(
                             "the local HHEM scorer needs the 'faithfulness' "
                             "extra: pip install '.[faithfulness]'"
                         ) from exc
                     try:
-                        tokenizer = AutoTokenizer.from_pretrained(self._model_id)
+                        # HHEM-2.1-Open ships its own modeling code
+                        # (modeling_hhem_v2.py) — loading requires
+                        # trust_remote_code, and scoring goes through the
+                        # custom ``model.predict(pairs)`` API, not a tokenizer
+                        # __call__ (the model card is explicit: do not call
+                        # the module directly).
                         model = AutoModelForSequenceClassification.from_pretrained(
-                            self._model_id
+                            self._model_id, trust_remote_code=True
                         )
                         model.eval()
                     except Exception as exc:
@@ -308,34 +311,35 @@ class HHEMScorer:
                             f"failed to load {self._model_id}: {exc}"
                         ) from exc
                     logger.info("loaded %s for local faithfulness scoring", self._model_id)
-                    self._loaded = (model, tokenizer, torch)
+                    self._loaded = (model, torch)
         return self._loaded
 
     def score_pairs(
         self, premises: Sequence[str], hypotheses: Sequence[str]
     ) -> list[float]:
-        """Score ``premises[i], hypotheses[i]`` pairs; P(consistent) per pair."""
+        """Score ``premises[i], hypotheses[i]`` pairs; consistency in [0, 1].
+
+        HHEM-2.1-Open accepts ``(premise, hypothesis)`` tuples through its
+        custom ``predict`` and returns a consistency score per pair — 1 means
+        the premise fully supports the hypothesis (card polarity, verified
+        empirically against the card's example pairs on load). Premise text
+        is already bounded per evidence, so chunked predict calls keep CPU
+        memory flat.
+        """
         if len(premises) != len(hypotheses):
             raise ValueError("premises and hypotheses must be the same length")
-        model, tokenizer, torch = self._load()
+        model, torch = self._load()
         scores: list[float] = []
         for start in range(0, len(premises), self._batch_size):
-            batch_p = premises[start : start + self._batch_size]
-            batch_h = hypotheses[start : start + self._batch_size]
-            inputs = tokenizer(
-                list(batch_p),
-                list(batch_h),
-                padding=True,
-                truncation=True,
-                max_length=_MAX_LENGTH,
-                return_tensors="pt",
+            chunk = list(
+                zip(
+                    premises[start : start + self._batch_size],
+                    hypotheses[start : start + self._batch_size],
+                )
             )
             with torch.no_grad():
-                logits = model(**inputs).logits
-            scores.extend(
-                float(value)
-                for value in torch.sigmoid(logits).squeeze(-1).tolist()
-            )
+                raw = model.predict(chunk)
+            scores.extend(float(value) for value in raw)
         return scores
 
 

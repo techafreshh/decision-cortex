@@ -50,17 +50,22 @@ badge renders "n/a · abstention" instead of a number.
 
 ## HHEM polarity and the sanity check
 
-`HHEMScorer` reads `sigmoid(model logits)` as the pair's **consistency
-probability** (1 = the evidence supports the sentence, 0 = not), per the
-model card (`vectara/hhallucination_evaluation_model`, used as a
-sequence-pair classifier with premise first, hypothesis second). The one-line
-check to pin the polarity if a future model swap is suspected: score
-`("Rust merged RFC 2193.", "Rust merged RFC 2193.")` — a consistent pair must
-score ≥ 0.5, an unrelated pair ≤ 0.5. Live checks run behind the `live` marker
-(eval-run workflow), because the first call downloads the model from the HF
-hub; automated CI never imports torch (the import is lazy inside
-`HHEMScorer._load`, failed imports raise `FaithfulnessUnavailableError` → 503
-with the install line).
+`HHEMScorer` uses **HHEM-2.1-Open**, whose public Hugging Face home is
+`vectara/hhallucination_evaluation_model` — with a *single* `h`
+(`hhallucination` is the gated alias; headless downloads get HTTP 401,
+verified against the hub API on deploy day). Loading requires
+`trust_remote_code=True` (the repo ships `modeling_hhem_v2.py`), and scoring
+goes through the model's custom `predict([ (premise, hypothesis), … ])` API —
+the card is explicit that you must not call the module with a tokenizer.
+`predict` returns a consistency probability per pair where **1 = fully
+supported**, and the deployed model reproduces the card's own reference
+scores to the fourth decimal (`Berlin/Paris` → 0.0111, `California/
+United States` → 0.6474), which is the polarity sanity check this default is
+pinned by. A future `FAITHFULNESS_MODEL_ID` swap must re-run it (consistent
+pair ≥ 0.5, unrelated pair ≤ 0.5). Live checks under the `live` marker need
+no HF token for this id; automated CI never imports torch (the import is
+lazy inside `HHEMScorer._load`, failed imports raise
+`FaithfulnessUnavailableError` → 503 with the install line).
 
 ## Image weight and cache
 
