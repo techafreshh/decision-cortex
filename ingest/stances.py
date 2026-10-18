@@ -134,23 +134,30 @@ def load_pairs(snapshot_dir: str = SNAPSHOT_DIR) -> list[Pair]:
 
     Bot accounts are skipped, RFCs the snapshot has no record for are skipped
     (their numbers cannot become `Decision` ids), and each pair keeps only its
-    first ``COMMENTS_PER_PAIR`` comments, bodies bounded.
+    first ``COMMENTS_PER_PAIR`` comments, bodies bounded. By default only
+    **merged** RFCs' pairs are classified — the decisions that shipped are the
+    objection story the schema and UI are built around, at a fraction of the
+    corpus cost (set ``STANCES_STATUSES=all`` to classify everything).
     """
-    rfcs = _rfc_titles(Path(snapshot_dir) / RFCS_FILE)
+    statuses = os.environ.get("STANCES_STATUSES", "merged").strip().lower()
+    rfcs = _rfc_index(Path(snapshot_dir) / RFCS_FILE)
+    keep = {rfc for rfc, (_, status) in rfcs.items() if status == "merged"}
+    if statuses == "all":
+        keep = set(rfcs)
     grouped: dict[tuple[str, int], list[dict[str, Any]]] = {}
     for comment in _read_jsonl(Path(snapshot_dir) / COMMENTS_FILE):
         author = str(comment.get("author", "")).strip()
         pr_id = comment.get("pr_id")
         if not author or author.lower() in _BOT_AUTHORS or author.endswith("-bot"):
             continue
-        if not isinstance(pr_id, int) or pr_id not in rfcs:
+        if not isinstance(pr_id, int) or pr_id not in keep:
             continue
         grouped.setdefault((author, pr_id), []).append(comment)
     return [
         Pair(
             handle=handle,
             rfc=rfc,
-            rfc_title=rfcs[rfc],
+            rfc_title=rfcs[rfc][0],
             comments=tuple(
                 {
                     "comment_id": comment.get("comment_id"),
@@ -317,14 +324,16 @@ def main() -> int:
     return 0
 
 
-def _rfc_titles(path: Path) -> dict[int, str]:
-    titles: dict[int, str] = {}
+def _rfc_index(path: Path) -> dict[int, tuple[str, str | None]]:
+    """`rfc -> (title, status)` for every snapshot record that has a number."""
+    index: dict[int, tuple[str, str | None]] = {}
     for record in _read_jsonl(path):
         rfc = record.get("rfc")
         title = record.get("title")
         if isinstance(rfc, int) and isinstance(title, str):
-            titles[rfc] = title
-    return titles
+            status = record.get("status")
+            index[rfc] = (title, str(status) if isinstance(status, str) else None)
+    return index
 
 
 def _bounded(text: str) -> str:

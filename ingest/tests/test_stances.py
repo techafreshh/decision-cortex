@@ -31,8 +31,9 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture()
 def snapshot(tmp_path: Path) -> Path:
     (tmp_path / "rfcs.jsonl").write_text(
-        json.dumps({"rfc": 2394, "title": "async fn in traits"}) + "\n"
-        + json.dumps({"rfc": 7, "title": "old proposal"}) + "\n",
+        json.dumps({"rfc": 2394, "title": "async fn in traits", "status": "merged"}) + "\n"
+        + json.dumps({"rfc": 7, "title": "old proposal", "status": "merged"}) + "\n"
+        + json.dumps({"rfc": 50, "title": "rejected one", "status": "rejected"}) + "\n",
         encoding="utf-8",
     )
     (tmp_path / "pr-comments.jsonl").write_text(
@@ -45,13 +46,32 @@ def snapshot(tmp_path: Path) -> Path:
                  "body": "FCP started.", "url": "ubot", "truncated": False},
                 {"pr_id": 2394, "comment_id": 3, "author": "bob", "ts": "t",
                  "body": "-1 on the blanket impls.", "url": "u3", "truncated": False},
-                {"pr_id": 9999, "comment_id": 4, "author": "carol", "ts": "t",
-                 "body": "comments on an unknown RFC", "url": "u4", "truncated": False},
+                {"pr_id": 50, "comment_id": 4, "author": "carol", "ts": "t",
+                 "body": "thoughts on the rejected one", "url": "u4", "truncated": False},
+                {"pr_id": 9999, "comment_id": 5, "author": "ellen", "ts": "t",
+                 "body": "comments on an unknown RFC", "url": "u5", "truncated": False},
             ]
         ),
         encoding="utf-8",
     )
     return tmp_path
+
+
+def test_load_pairs_scopes_to_merged_rfcs_by_default(snapshot: Path) -> None:
+    assert [(pair.handle, pair.rfc) for pair in stances.load_pairs(str(snapshot))] == [
+        ("alice", 2394),
+        ("bob", 2394),
+    ]
+
+
+def test_load_pairs_covers_every_rfc_status_in_all_mode(
+    snapshot: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STANCES_STATUSES", "all")
+
+    pairs = stances.load_pairs(str(snapshot))
+
+    assert [p.rfc for p in pairs] == [2394, 2394, 50]
 
 
 def test_load_pairs_groups_per_author_and_skips_bots_and_unknown_rfcs(
@@ -67,7 +87,8 @@ def test_load_pairs_groups_per_author_and_skips_bots_and_unknown_rfcs(
 
 def test_load_pairs_caps_comments_per_pair(tmp_path: Path) -> None:
     (tmp_path / "rfcs.jsonl").write_text(
-        json.dumps({"rfc": 1, "title": "x"}) + "\n", encoding="utf-8"
+        json.dumps({"rfc": 1, "title": "x", "status": "merged"}) + "\n",
+        encoding="utf-8",
     )
     comments = [
         {"pr_id": 1, "comment_id": i, "author": "dana", "ts": "t",
