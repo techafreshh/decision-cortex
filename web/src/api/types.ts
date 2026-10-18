@@ -125,3 +125,87 @@ export interface NodeDetail {
   properties: Record<string, unknown>
   source: NodeSource
 }
+
+/** One node in the blast radius from `GET /graph/impact/{id}` (`api/impact.py`). */
+export interface ImpactNode {
+  id: string
+  label: string
+  name: string
+  depth: number
+}
+
+/** One traversed edge; `src`/`dst` keep the graph's stored direction. */
+export interface ImpactEdge {
+  src: string
+  dst: string
+  type: string
+  properties: Record<string, unknown>
+}
+
+export interface ImpactGraph {
+  seed: string
+  nodes: ImpactNode[]
+  edges: ImpactEdge[]
+  evidence_types: string[]
+  truncated: boolean
+}
+
+/** One stance edge (`OBJECTED`/`SUPPORTED`/`MODERATED`) pointing at a decision. */
+export interface Stance {
+  handle: string
+  kind: string
+  evidence: string | null
+  confidence: number | null
+}
+
+export interface SupersedeEdge {
+  src: string
+  dst: string
+}
+
+export interface TimelineDecision {
+  id: string
+  rfc: number | null
+  title: string
+  status: string | null
+  proposed_on: string | null
+  decided_on: string | null
+  areas: string[]
+  teams: string[]
+  supersedes: number[]
+  superseded_by: number[]
+  stances: Stance[]
+}
+
+/** The flat timeline from `GET /timeline` (`api/timeline.py`). */
+export interface Timeline {
+  decisions: TimelineDecision[]
+  supersede_edges: SupersedeEdge[]
+  areas: string[]
+  teams: string[]
+  tours: string[]
+}
+
+/** One curated stage of a lifecycle tour (`GET /timeline?tour=...`). */
+export interface TourStage {
+  id: string
+  rfc: number
+  title: string
+  status: string | null
+  proposed_on: string | null
+  decided_on: string | null
+  role: string
+  narrative: string
+}
+
+export interface TourTransition {
+  from: string
+  to: string
+  label: string
+}
+
+export interface Tour {
+  tour: string
+  stages: TourStage[]
+  transitions: TourTransition[]
+}

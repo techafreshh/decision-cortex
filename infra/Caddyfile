@@ -18,6 +18,17 @@
 	handle /node/* {
 		reverse_proxy api:8000
 	}
+handle /graph/* {
+		reverse_proxy api:8000
+	}
+
+handle /timeline* {
+		reverse_proxy api:8000
+	}
+
+handle /exports/* {
+		reverse_proxy api:8000
+	}
 	handle /healthz {
 		reverse_proxy api:8000
 	}

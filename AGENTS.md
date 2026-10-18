@@ -208,7 +208,7 @@ branches; only W4 touches `infra/`.
 1. **0:00–0:25** — "600 decisions, 30k debate comments, one question box." Open on `rust-lang/rfcs`.
 2. **0:25–1:15** — "What did the language team decide about trait objects, and who objected?" → AnswerCard builds sentence-by-sentence; chips fly open to real comments; faithfulness badge lands.
 3. **1:15–2:00** — **The negative-proof moment:** "Did Rust ever decide to require attachments in `unsafe` code?" → NoRecordCard with search receipts; then the twist — "…but three proposals came close" with their evidence trails. Flash the Vector-RAG ablation: the same question hallucinating a plausible-but-fake answer on chunk-embeddings.
-4. **2:00–3:00** — Impact Explorer on async/await; timeline animates the supersede chain across real RFC numbers (pick the concrete chain at build time); CypherPeek flash.
+4. **2:00–3:00** — Impact Explorer on async/await; timeline shows the real supersede chains and walks the async/await lifecycle tour across real RFC numbers (curated at build time); CypherPeek flash.
 5. **3:00–4:00** — router/ledger close-up (System-1 economics), "bring your own corpus" teaser, URL + one-command local run.
 
 Any change that breaks one of these beats (cached answers, button names,

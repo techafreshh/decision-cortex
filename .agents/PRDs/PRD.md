@@ -64,14 +64,14 @@ The core value proposition has three parts. **(a) Provenance by construction:** 
 - [ ] Q&A over the RFC corpus with **claim-level citations**: sentence-by-sentence answers, each sentence mapped to evidence nodes by the claim↔evidence gate; uncited sentences visually flagged
 - [ ] **Citation chips → SourcePanel**: every chip opens the source's graph metadata (author, date, stance) and deep-links out to the RFC, the GitHub comment, or the commit (the graph stores refs, never bodies — §10)
 - [ ] **Principled abstention**: if key claims go uncited → answer abstains ("no record supports that — here's what the record does contain") with the `NoRecordCard` receipts (searched N nodes, M evidence chains, 0 matches) and the "proposals that came close" trail
-- [ ] **Impact Explorer**: click any Decision/Concept/Person → dependent subgraph blooms (React Flow); edges labeled by evidence type; hover-focus beat
-- [ ] **Timeline**: decisions over time with supersede arrows and loudest-voice stances; scripted "async/await lifecycle story" tour
+- [x] **Impact Explorer**: click any Decision/Concept/Person → dependent subgraph blooms (React Flow); edges labeled by evidence type; hover-focus beat
+- [x] **Timeline**: decisions over time with the real supersede arrows and stance highlights (stance edges land with the Phase-3 polish); scripted "async/await lifecycle story" tour
 - [ ] **Faithfulness badge**: RAGAS faithfulness (HHEM-2.1-Open, local CPU) scored per answer → "faithfulness 1.0 · 8/8 claims cited"
 - [ ] **Verification-set buttons**: "Ask the corpus", "Prove the negative", "Impact tour", "The async/await story" — scripted, deterministic, first
 - [ ] **Show-your-work strip** on every answer: router class → retrieval mode → evidence count → faithfulness (collapsible)
 - [ ] **CypherPeek**: collapsible panel showing generated Cypher (display flourish only)
 - [ ] Free-text search box over the corpus (after scripted buttons)
-- [ ] **Exports**: Markdown report + JSON graph dump ("your company brain, portable")
+- [x] **Exports**: Markdown report + JSON graph dump ("your company brain, portable")
 
 **Data & graph**
 - [ ] **One-time RFC snapshot** via GitHub REST (free PAT, ≤ 5,000 req/h): RFC markdown files, PR review comments (first ~100 per PR; retained honestly as `:Message {truncated: bool}`), commit history per RFC file → JSONL committed in-repo
@@ -135,7 +135,7 @@ As a *judge*, I want to click a Decision/Concept and watch the dependent subgrap
 *Example:* clicking the async/await decision highlights decisions superseding it, concepts touching it, and teams owning the area, edges colored/labeled by evidence type: "if we revisit async trails, what's in the blast radius?"
 
 **U4 — Read a decision's lifecycle.**
-As a *demo viewer*, I want the Timeline with supersede arrows and the scripted async/await story, so that a decade of contentious decisions becomes legible in 60 seconds.
+As a *demo viewer*, I want the Timeline with the real supersede arrows and the scripted async/await lifecycle story, so that a decade of contentious decisions becomes legible in 60 seconds.
 *Example:* proposed → revised → accepted → implementation evidence, each stage a real RFC number, real dates, real stances of the loudest voices.
 
 **U5 — Inspect the agent's spine.**
@@ -241,7 +241,7 @@ track3-decision-cortex/
 | `CitationChip` → `SourcePanel` | Chip opens the source's graph metadata (author, date, stance) and deep-links out to the RFC, GitHub comment, or commit (refs, never bodies — §10) |
 | `NoRecordCard` | Abstention UI: "searched N nodes · M evidence chains · 0 matches"; the "three proposals came close" trail; runs on the verification set's no-record buttons |
 | `ImpactGraph` | React Flow; evidence-type edge colors/labels; node click → subgraph blooms; hover-focus beat |
-| `TimelineView` | Decisions over time, supersede arrows, stance highlights; scripted async/await tour |
+| `TimelineView` | Decisions over time with the real supersede arrows and stance highlights; scripted async/await lifecycle tour (lifecycle transitions, not supersedes) |
 | `FaithfulnessBadge` | RAGAS + HHEM numbers per answer; "scoring…" state until CPU scoring completes (async, never blocks the stream) |
 | `CypherPeek` | Collapsible generated-Cypher display (flourish only) |
 | Show-your-work strip | `router class → retrieval mode → evidence count → faithfulness`, collapsible, on every answer |
@@ -359,7 +359,7 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 - [ ] Live URL with the verification-set buttons + free search
 - [ ] Every answer chip-deep-links to real sources (RFC text, comment, commit)
 - [ ] Abstention moment with receipts works (NoRecordCard + "came close" trail)
-- [ ] Impact Explorer + Timeline functional (real RFC numbers on supersede chains)
+- [x] Impact Explorer + Timeline functional (real RFC numbers on supersede chains)
 - [ ] Faithfulness badge real (HHEM-2.1-Open, local)
 - [ ] 4-min video (+ backup footage) featuring the negative-proof beat
 - [ ] README with MADR/Graphiti/ARE positioning + snapshot methodology
@@ -428,13 +428,13 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 **Goal:** All three product surfaces done; live on the VPS; rehearsed.
 
 **Deliverables:**
-- [ ] Impact Explorer (React Flow, evidence-typed edges) + Timeline (supersede arrows, async/await scripted tour) + exports (MD + JSON dump)
+- [x] Impact Explorer (React Flow, evidence-typed edges) + Timeline (supersede arrows, async/await scripted tour) + exports (MD + JSON dump)
 - [ ] Agent polish: sufficiency stop, confidence-stamped stance edges with jump-to-evidence
 - [ ] *(Stretch, only if all green)* rust-lang/rust Issues sub-corpus
 - [ ] Deploy to VPS (seed-on-boot, spend-capped key); free-search polishing; landing buttons finalized
 - [ ] **Dress rehearsal ×2** (full video path, scripted buttons → free chat)
 
-**Validation:** zero crashes across both rehearsals; live URL healthy end-to-end; exports download correct artifacts; supersede chain in the tour uses real RFC numbers chosen at build time.
+**Validation:** zero crashes across both rehearsals; live URL healthy end-to-end; exports download correct artifacts; the async/await lifecycle tour uses real RFC numbers chosen at build time (the flat timeline carries the real SUPERSEDES edges).
 
 ### Phase 4 — Readme, video, submit (Day 4, Oct 18)
 **Goal:** Submitted with buffer-to-burn.
