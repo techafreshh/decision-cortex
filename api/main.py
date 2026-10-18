@@ -2,8 +2,10 @@
 
 Liveness is deliberately decoupled from FalkorDB availability: ``/healthz``
 answers 200 from the process alone, so the API boots (and the verification
-container can probe it) with no database reachable. The seed status is
-reported honestly in the body instead of gating the response.
+container can probe it) with no database reachable. The seed status is a live
+count of the loaded Decisions and their edges (``api.seed.graph_is_seeded``)
+reported honestly in the body instead of gating the response — an unreachable
+database is ``seeded: false``, not a failed probe.
 
 ``POST /ask`` streams the AG-UI event sequence (PRD §10) as Server-Sent
 Events: ``RUN_STARTED`` → tool-call events → ``TEXT_MESSAGE_CONTENT`` deltas
@@ -26,6 +28,7 @@ from api.answer import SCENARIOS, ask_events
 from api.events import sse_encode
 from api.nodes import node_detail
 from api.retrieval import connect_from_env
+from api.seed import graph_is_seeded
 
 app = FastAPI(title="Decision Cortex API")
 
@@ -38,7 +41,7 @@ class AskRequest(BaseModel):
 
 @app.get("/healthz")
 def healthz() -> dict[str, object]:
-    return {"status": "ok", "seeded": False}
+    return {"status": "ok", "seeded": graph_is_seeded(connect_from_env())}
 
 
 @app.get("/node/{node_id}")

@@ -9,10 +9,16 @@ on:
     paths:
       - 'infra/**'
       - 'snapshot/**'
+      - 'api/**'
+      - 'web/**'
+      - 'pyproject.toml'
   pull_request:
     paths:
       - 'infra/**'
       - 'snapshot/**'
+      - 'api/**'
+      - 'web/**'
+      - 'pyproject.toml'
   workflow_dispatch:
 
 permissions:
@@ -26,9 +32,10 @@ jobs:
   smoke:
     name: compose up -> healthz -> seeded graph
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # Generous: the api image installs graphrag-sdk (-> torch) and compiles
+    # hnswlib, then the first boot seeds the 28k-node snapshot.
+    timeout-minutes: 30
     env:
-      # TODO(W4): align host port + path with infra/Caddyfile when it lands.
       SMOKE_URL: http://localhost:8080
     steps:
       - uses: actions/checkout@v7
@@ -48,16 +55,44 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         run: |
           for i in $(seq 1 60); do
-            if curl -fsS "${SMOKE_URL}/healthz" >/dev/null 2>&1; then
-              echo "healthz ok after attempt $i"
-              curl -fsS "${SMOKE_URL}/healthz"
+            body="$(curl -fsS "${SMOKE_URL}/healthz" 2>/dev/null || true)"
+            if [ -n "$body" ] && \
+              python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("seeded") is True else 1)' <<<"$body"; then
+              echo "healthz reports a seeded graph after attempt $i: $body"
+              # Caddy serves the built SPA, not just the API.
+              curl -fsS "${SMOKE_URL}/" | grep -q '<div id="root">'
+              # Caddy proxies an API-only route: an unknown node id returns the
+              # API's JSON 404, while the SPA catch-all would return 200 HTML.
+              code="$(curl -s -o /dev/null -w '%{http_code}' "${SMOKE_URL}/node/__probe__")"
+              if [ "$code" != "404" ]; then
+                echo "Caddy did not proxy /node/* to the API (got HTTP $code)"
+                docker compose -f infra/docker-compose.yml logs --no-color
+                exit 1
+              fi
               exit 0
             fi
-            sleep 3
+            sleep 5
           done
-          echo "healthz never came up"
+          echo "healthz never reported a seeded graph"
           docker compose -f infra/docker-compose.yml logs --no-color
           exit 1
+      - name: Second boot reuses the volume (seed guard path)
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          docker compose -f infra/docker-compose.yml restart api
+          for i in $(seq 1 60); do
+            body="$(curl -fsS "${SMOKE_URL}/healthz" 2>/dev/null || true)"
+            if [ -n "$body" ] && \
+              python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("seeded") is True else 1)' <<<"$body"; then
+              echo "api back up with a seeded graph after restart attempt $i"
+              break
+            fi
+            sleep 5
+          done
+          docker compose -f infra/docker-compose.yml logs --no-color api > /tmp/api.log
+          cat /tmp/api.log
+          # The guard, not a re-ingest: proves acceptance criterion 5.
+          grep -q "graph already seeded" /tmp/api.log
       - name: Cleanup
         if: always() && steps.guard.outputs.ready == 'true'
         run: docker compose -f infra/docker-compose.yml down -v --remove-orphans

@@ -18,7 +18,7 @@ Enterprise knowledge tools (Glean et al.) retrieve documents; they don't model *
 
 The core value proposition has three parts. **(a) Provenance by construction:** answers are synthesized from graph evidence, and every sentence carries a **citation chip** that opens the exact source — the RFC section, the GitHub comment, the commit — not a "references" list bolted on afterwards. **(b) Impact analysis is a traversal:** "what touches async trails?" is a multi-hop graph walk, and the Impact Explorer renders the blast radius live. **(c) The agent can prove a negative:** "there is no record we ever decided that" is a first-class answer — the `NoRecordCard` shows the receipts (N nodes searched, M evidence chains, 0 matches), which no RAG stack can honestly claim.
 
-**MVP goal statement:** By 11:59 PM IST on Oct 18, ship a live URL where a judge can ask anything over the RFC corpus, get chip-cited answers with a real-time faithfulness badge (RAGAS + HHEM), fire the 10 no-record questions and watch principled abstention with receipts, walk the Impact Explorer and Timeline on real supersede chains, and run the whole brain locally with `docker compose up --build` + one OpenRouter key — **replaying the demo at $0 LLM cost** — plus a 4-minute video featuring the negative-proof moment.
+**MVP goal statement:** By 11:59 PM IST on Oct 18, ship a live URL where a judge can ask anything over the RFC corpus, get chip-cited answers with a real-time faithfulness badge (RAGAS + HHEM), fire the 10 no-record questions and watch principled abstention with receipts, walk the Impact Explorer and Timeline on real supersede chains, and run the whole brain locally with `docker compose -f infra/docker-compose.yml up --build` + one OpenRouter key — **replaying the demo at $0 LLM cost** — plus a 4-minute video featuring the negative-proof moment.
 
 **Positioning paragraph:** Microsoft GraphRAG is in maintenance mode; LightRAG (40k★) is the current wave. Neither does decisions-with-provenance or principled abstention as first-class UX. Glean sells this closed-source with 275 connectors; Decision Cortex is the open, graph-native, citation-first take. Claim-level attribution is an active research area (ARE arXiv:2410.16708, RAGentA arXiv:2506.16988) — we ship a minimal, verifiable version of it.
 
@@ -143,7 +143,7 @@ As a *judge*, I want the show-your-work strip and decision ledger, so that I can
 *Example:* the strip reads `router: decision-provenance → retrieval: multi-hop (46 candidates) → gates: 8/8 claims cited → faithfulness 1.0`; the footer ledger ticks with model, confidence, latency, cost, escalated flag.
 
 **U6 — Run it locally for free.**
-As a *judge*, I want `docker compose up --build` + one OpenRouter key to give me a seeded, queryable brain, so that I can verify the demo myself without setup pain.
+As a *judge*, I want `docker compose -f infra/docker-compose.yml up --build` + one OpenRouter key to give me a seeded, queryable brain, so that I can verify the demo myself without setup pain.
 *Example:* first boot replays the committed JSONL snapshot in fast mode — no GitHub rate limits, no extraction tokens; replaying the demo Q&A costs $0.
 
 **U7 — Trust the provenance story.**
@@ -298,7 +298,7 @@ Read-peephole using `@falkordb/mcpserver`: list node labels/relations, run read-
 ### 9.3 Deployment considerations
 
 - Live URL on VPS (locked decision #6); demo video recorded regardless of deployment success.
-- Seed-on-boot (empty graph → fast-mode snapshot replay); `.env` with one OpenRouter key = the entire judge setup.
+- Seed-on-boot (empty graph → fast-mode snapshot replay); `.env` with one OpenRouter key = the entire judge setup. The compose file lives in `infra/`, so the env file it reads is `infra/.env` (`cp infra/.env.example infra/.env`).
 - Budget doctrine ($10 cap): committed snapshot + cached demo answers + cheap-model(S1) extraction means judge replay ≈ $0; owner's dev spend during event is the only meaningful cost.
 
 ---
@@ -363,7 +363,7 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 - [ ] Faithfulness badge real (HHEM-2.1-Open, local)
 - [ ] 4-min video (+ backup footage) featuring the negative-proof beat
 - [ ] README with MADR/Graphiti/ARE positioning + snapshot methodology
-- [ ] `docker compose up --build` + one key = judge-local brain, $0 LLM cost for replay
+- [ ] `docker compose -f infra/docker-compose.yml up --build` + one key = judge-local brain, $0 LLM cost for replay
 - [ ] Decision ledger in the UI footer
 
 ### 11.2 Quality indicators (measured by the verification set, which doubles as the regression eval)
@@ -399,7 +399,7 @@ REST + AG-UI/SSE from the FastAPI `api` service; all state flows over SSE + REST
 - [ ] UI mockups + shared dark "graph-ops" component kit skeleton
 - [ ] Submission-README skeleton under `docs/` with the positioning paragraph; VPS/domain/Compose template + `.env.example`
 
-**Validation:** snapshot covers all merged+active+rejected RFCs and PR-comment harvest with truncation flags; verification set passes a full manual check; `docker compose up --build` boots api+web (empty graph OK).
+**Validation:** snapshot covers all merged+active+rejected RFCs and PR-comment harvest with truncation flags; verification set passes a full manual check; `docker compose -f infra/docker-compose.yml up --build` boots api+web (empty graph OK).
 
 ### Phase 1 — Ingestion into FalkorDB (Day 1, Oct 15)
 **Goal:** The graph is real, provenance-edged, and entity-resolved.

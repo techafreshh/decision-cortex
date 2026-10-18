@@ -4,6 +4,8 @@
 # secrets
 .env
 .env.*
+# ...but the committed compose template (no secrets) must ship
+!infra/.env.example
 
 # python
 __pycache__/
