@@ -20,6 +20,13 @@ scripted question (and its cached answer); ``question`` is the free-chat path.
 form) back the web Impact Explorer and Timeline (PRD §7.1); ``POST /exports/report``
 and ``POST /exports/graph`` download a Markdown report or the impact subgraph
 (PRD §10). All four are pure graph reads — no LLM, so they cost nothing.
+
+``POST /faithfulness`` scores a finished answer's sentences against their cited
+evidence with the local HHEM-2.1-Open cross-encoder (:mod:`api.faithfulness`) —
+the badge's async post-stream phase. ``GET /verification`` serves the pinned
+40-question set; ``POST /verification/run`` executes it through the live answer
+pipeline and reports accuracy and abstention correctness (:mod:`api.evaluation`;
+real OpenRouter calls, so it refuses politely without a key).
 """
 
 from collections.abc import Iterator
@@ -29,6 +36,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from api import evidence_text, faithfulness
 from api.answer import SCENARIOS, ask_events
 from api.events import sse_encode
 from api.exports import ExportError, export_filename, render_graph, render_report
@@ -56,6 +64,15 @@ class ReportRequest(BaseModel):
 class GraphExportRequest(BaseModel):
     node_id: str
     depth: int = IMPACT_MAX_DEPTH
+
+
+class FaithfulnessClaim(BaseModel):
+    sentence: str
+    evidence_ids: list[str] = []
+
+
+class FaithfulnessRequest(BaseModel):
+    claims: list[FaithfulnessClaim]
 
 
 @app.get("/healthz")
@@ -119,6 +136,33 @@ def export_graph(request: GraphExportRequest) -> JSONResponse:
         content=payload,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.post("/faithfulness")
+def faithfulness_score(request: FaithfulnessRequest) -> dict[str, Any]:
+    """Score a finished answer's claims against their cited evidence text."""
+    reader = connect_from_env()
+    unique_ids = sorted(
+        {eid for claim in request.claims for eid in claim.evidence_ids}
+    )
+    try:
+        texts = evidence_text.resolve_evidence_texts(reader, unique_ids)
+        report = faithfulness.score_answer(
+            [
+                faithfulness.ClaimInput(
+                    sentence=claim.sentence, evidence_ids=tuple(claim.evidence_ids)
+                )
+                for claim in request.claims
+            ],
+            texts,
+            score_fn=faithfulness.get_scorer(),
+            threshold=faithfulness.threshold_from_env(),
+        )
+    except faithfulness.FaithfulnessUnavailableError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return report.payload()
 
 
 @app.post("/ask")

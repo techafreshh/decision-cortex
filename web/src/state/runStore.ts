@@ -14,6 +14,7 @@ import type {
   AbstentionReceipt,
   AskEvent,
   CitationChip,
+  FaithfulnessReport,
   LedgerSummary,
 } from '../api/types'
 
@@ -40,6 +41,9 @@ export interface RunState {
   ledger: LedgerSummary | null
   abstention: AbstentionReceipt | null
   faithfulnessPending: boolean
+  /** The landed HHEM report; `null` until `POST /faithfulness` resolves. */
+  faithfulness: FaithfulnessReport | null
+  faithfulnessError: string | null
   finished: boolean
   error: string | null
 }
@@ -52,6 +56,7 @@ export interface AskRequestLike {
 export type RunAction =
   | { kind: 'reset'; request: AskRequestLike }
   | { kind: 'event'; event: AskEvent }
+  | { kind: 'faithfulness'; report: FaithfulnessReport | null; message: string | null }
   | { kind: 'error'; message: string }
   | { kind: 'clear' }
 
@@ -80,6 +85,8 @@ export const initialRunState: RunState = {
   ledger: null,
   abstention: null,
   faithfulnessPending: false,
+  faithfulness: null,
+  faithfulnessError: null,
   finished: false,
   error: null,
 }
@@ -111,6 +118,13 @@ export function reduceRun(state: RunState, action: RunAction): RunState {
   }
   if (action.kind === 'error') {
     return { ...state, running: false, error: action.message }
+  }
+  if (action.kind === 'faithfulness') {
+    return {
+      ...state,
+      faithfulness: action.report,
+      faithfulnessError: action.message,
+    }
   }
 
   const { event } = action

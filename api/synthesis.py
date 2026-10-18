@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from api import llm
+from api import evidence_text, llm
 from api.retrieval import EvidenceNode, evidence_line
 
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
@@ -54,7 +54,8 @@ def _synthesis_prompt(
     question: str, route: str, evidence: Sequence[EvidenceNode]
 ) -> str:
     lines = "\n".join(
-        f"[e{index}] {evidence_line(node)}" for index, node in enumerate(evidence)
+        _grounded_evidence_line(index, node)
+        for index, node in enumerate(evidence)
     )
     return (
         "You answer questions about the rust-lang/rfcs decision corpus, a graph "
@@ -68,6 +69,22 @@ def _synthesis_prompt(
         "Evidence:\n"
         f"{lines or '(none)'}\n"
     )
+
+
+def _grounded_evidence_line(index: int, node: EvidenceNode) -> str:
+    """The positional evidence line, plus the node's real text when the
+    committed snapshot holds it.
+
+    The graph stores refs, never bodies, so the pinnable ``evidence_line`` is a
+    permalink; the prompt grounds it with the bounded snapshot text
+    (:mod:`api.evidence_text`) — a synthesis model asked to quote the debate
+    gets the debate, not a URL. The ``[eN]`` label stays first so the line is
+    sliceable by the same positional contract the claim gate uses.
+    """
+    text = evidence_text.evidence_text(node)
+    if text is None:
+        return f"[e{index}] {evidence_line(node)}"
+    return f"[e{index}] {evidence_line(node)}\n    text: {text}"
 
 
 def _split_sentences(text: str) -> tuple[str, ...]:

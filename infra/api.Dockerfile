@@ -20,8 +20,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /build
 COPY pyproject.toml ./
 COPY api ./api
+# torch must be installed from the CPU-only index before `.[faithfulness]`: the
+# default PyPI linux wheel drags the whole CUDA stack (several GB) into a
+# CPU-only deployment. The extra then sees torch already satisfied.
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+    && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir '.[faithfulness]'
 
 FROM python:3.12-slim AS runtime
 
@@ -35,6 +39,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
 WORKDIR /app
 COPY ingest ./ingest
 COPY snapshot ./snapshot
+# GET /verification reads the pinned 40-question set in place.
+COPY verification ./verification
 
 EXPOSE 8000
 # Compose overrides this with the seed-then-exec command; the bare uvicorn

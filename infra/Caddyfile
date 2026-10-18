@@ -26,7 +26,13 @@ handle /timeline* {
 		reverse_proxy api:8000
 	}
 
-handle /exports/* {
+	handle /exports/* {
+		reverse_proxy api:8000
+	}
+	handle /faithfulness* {
+		reverse_proxy api:8000
+	}
+	handle /verification* {
 		reverse_proxy api:8000
 	}
 	handle /healthz {

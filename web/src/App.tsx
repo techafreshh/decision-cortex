@@ -100,7 +100,14 @@ function AskView({
         <NoRecordCard question={state.question} receipt={state.abstention} />
       )}
 
-      {state.faithfulnessPending ? <FaithfulnessBadge /> : null}
+      {state.faithfulnessPending ? (
+        <FaithfulnessBadge
+          pending={state.faithfulnessPending}
+          report={state.faithfulness}
+          error={state.faithfulnessError}
+          hasSentences={state.sentences.length > 0}
+        />
+      ) : null}
 
       <CypherPeek queries={state.queries} />
 

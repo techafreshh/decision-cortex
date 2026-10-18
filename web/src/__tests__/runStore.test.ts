@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import type { AbstentionReceipt, AskEvent, LedgerSummary } from '../api/types'
+import type {
+  AbstentionReceipt,
+  AskEvent,
+  FaithfulnessReport,
+  LedgerSummary,
+} from '../api/types'
 import {
   hasRun,
   initialRunState,
@@ -175,6 +180,48 @@ describe('reduceRun', () => {
     const state = reduceRun(running, { kind: 'error', message: 'boom' })
     expect(state.running).toBe(false)
     expect(state.error).toBe('boom')
+  })
+
+  it('lands the faithfulness report without touching run lifecycle fields', () => {
+    const report: FaithfulnessReport = {
+      faithfulness: 0.8571,
+      claims_total: 7,
+      claims_supported: 6,
+      claims_scored: 6,
+      claims_unresolved: 1,
+      threshold: 0.5,
+      model: 'faithfulness:hhem-2.1-open',
+      latency_ms: 4200,
+      claims: [],
+    }
+    const finished = fold([
+      event({ type: 'FAITHFULNESS_PENDING' }),
+      event({
+        type: 'RUN_FINISHED',
+        citation_count: 2,
+        claims_total: 7,
+        claims_cited: 6,
+        abstention_required: false,
+        ledger: LEDGER,
+      }),
+    ])
+    const state = reduceRun(finished, {
+      kind: 'faithfulness',
+      report,
+      message: null,
+    })
+    expect(state.faithfulness).toEqual(report)
+    expect(state.faithfulnessError).toBeNull()
+    expect(state.finished).toBe(true)
+    expect(state.running).toBe(false)
+
+    const failed = reduceRun(finished, {
+      kind: 'faithfulness',
+      report: null,
+      message: 'POST /faithfulness failed (503): install the extra',
+    })
+    expect(failed.faithfulness).toBeNull()
+    expect(failed.faithfulnessError).toContain('503')
   })
 
   it('shows the run view once a failure lands, so the error can render', () => {

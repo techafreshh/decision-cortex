@@ -30,6 +30,12 @@ services:
       SNAPSHOT_DIR: snapshot
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       SPEND_CAP_USD: ${SPEND_CAP_USD:-10}
+      # The local HHEM faithfulness model downloads once, here, and stays
+      # cached in a named volume so rebuilds of the container never re-fetch ~1GB
+      # of weights from the Hugging Face hub.
+      HF_HOME: /hf-cache
+    volumes:
+      - hf-cache:/hf-cache
     depends_on:
       falkordb:
         condition: service_healthy
@@ -65,3 +71,4 @@ services:
 
 volumes:
   falkordb-data:
+  hf-cache:

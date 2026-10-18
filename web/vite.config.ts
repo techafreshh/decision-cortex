@@ -16,6 +16,8 @@ export default defineConfig({
       '/graph': apiTarget,
       '/timeline': apiTarget,
       '/exports': apiTarget,
+      '/faithfulness': apiTarget,
+      '/verification': apiTarget,
       '/healthz': apiTarget,
     },
   },

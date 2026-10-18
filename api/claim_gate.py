@@ -18,8 +18,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from api import llm
+from api import evidence_text, llm
 from api.retrieval import EvidenceNode, evidence_line
+
+#: Bounded evidence excerpt carried into the gate prompt. The gate runs once
+#: per sentence over every candidate, so its excerpt is tighter than the
+#: synthesis one (:mod:`api.synthesis`) — enough text to recognize the
+#: supporting node, not enough for one message body to dominate the choice.
+GATE_TEXT_LIMIT = 240
 
 
 class _DecideFn(Protocol):
@@ -84,7 +90,7 @@ def _uncited(
 
 def _gate_prompt(sentence: str, evidence: Sequence[EvidenceNode]) -> str:
     lines = "\n".join(
-        f"[e{index}] {evidence_line(node)}" for index, node in enumerate(evidence)
+        f"[e{index}] {_grounded_line(node)}" for index, node in enumerate(evidence)
     )
     return (
         "You decide whether a sentence from an answer about the rust-lang/rfcs "
@@ -95,3 +101,16 @@ def _gate_prompt(sentence: str, evidence: Sequence[EvidenceNode]) -> str:
         "Evidence:\n"
         f"{lines}\n"
     )
+
+
+def _grounded_line(node: EvidenceNode) -> str:
+    """The evidence line plus a bounded snippet of its real snapshot text.
+
+    The gate picks the node that supports the sentence; matching against the
+    referenced debate text (``api.evidence_text``) pins the choice to the
+    record's content instead of a permalink the model cannot judge.
+    """
+    text = evidence_text.evidence_text(node)
+    if text is None:
+        return evidence_line(node)
+    return f"{evidence_line(node)}\n    text: {text[:GATE_TEXT_LIMIT]}"

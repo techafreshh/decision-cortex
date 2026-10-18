@@ -62,6 +62,29 @@ export interface AbstentionReceipt {
   came_close: CameClose[]
 }
 
+/** One scored claim from `POST /faithfulness` (`api/faithfulness.py`). */
+export interface FaithfulnessClaimScore {
+  sentence: string
+  evidence_ids: string[]
+  score: number | null
+  supported: boolean
+  /** `scored` | `uncited` | `unresolved` | `empty` — why the claim landed there. */
+  status: string
+}
+
+/** The HHEM-2.1-Open faithfulness report the badge renders. */
+export interface FaithfulnessReport {
+  faithfulness: number | null
+  claims_total: number
+  claims_supported: number
+  claims_scored: number
+  claims_unresolved: number
+  threshold: number
+  model: string
+  latency_ms: number
+  claims: FaithfulnessClaimScore[]
+}
+
 /** One claim-gate verdict, carried in the `claim_gate` result. */
 export interface ClaimVerdict {
   sentence: string

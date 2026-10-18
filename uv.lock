@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 
 [[package]]
@@ -287,6 +287,10 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+faithfulness = [
+    { name = "torch" },
+    { name = "transformers" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -296,9 +300,11 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
+    { name = "torch", marker = "extra == 'faithfulness'", specifier = ">=2.2" },
+    { name = "transformers", marker = "extra == 'faithfulness'", specifier = ">=4.44" },
     { name = "uvicorn" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "faithfulness"]
 
 [[package]]
 name = "falkordb"

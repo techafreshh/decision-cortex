@@ -20,6 +20,13 @@ dev = [
     "pytest",
     "ruff",
 ]
+# The local HHEM-2.1-Open cross-encoder behind POST /faithfulness. Not a dev
+# dependency on purpose: automated CI installs only [dev] and never downloads
+# torch or the model (zero-LLM-call rule). The api image installs this extra.
+faithfulness = [
+    "torch>=2.2",
+    "transformers>=4.44",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["api"]
