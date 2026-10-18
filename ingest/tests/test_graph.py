@@ -199,7 +199,9 @@ def test_committed_corpus_builds_expected_counts() -> None:
 
     graph.validate_payload(payload)
     assert len(payload.nodes) == 28_483
-    assert len(payload.edges) == 31_938
+    # 31,938 loader edges plus one stance edge per committed
+    # snapshot/stances.jsonl row (the merged-RFC classification).
+    assert len(payload.edges) == 31_938 + 2_704 == 34_642
 
     labels = {}
     for node in payload.nodes:
