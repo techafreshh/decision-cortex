@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -48,7 +48,7 @@ def _sufficient(_prompt: str, *, yes_no: bool) -> llm.DecideResult[bool]:
 
 
 def _route_decision_provenance(
-    _prompt: str, *, one_of: Sequence[str]
+    _prompt: str, *, one_of: Sequence[str], criteria: Mapping[str, str] | None = None
 ) -> llm.DecideResult[str]:
     return llm.DecideResult(choice="decision-provenance", confidence=0.9, escalated=False)
 
