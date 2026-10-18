@@ -30,12 +30,16 @@ services:
       SNAPSHOT_DIR: snapshot
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       SPEND_CAP_USD: ${SPEND_CAP_USD:-10}
-      # Model slugs: config changes, never code (PRD §9.1). Empty string
-      # resolves to the documented default inside api/llm.py.
+      # Model slugs: config changes, never code (PRD §9.1). The embedding
+      # defaults track the COMMITTED snapshot/decision-embeddings.jsonl
+      # (pplx 1024) — the loader refuses a mismatched space, so empty defaults
+      # here would crash a fresh judge seed-on-boot whose .env sets only the
+      # key. api/llm.py resolves non-embedding slugs to their documented
+      # defaults.
       DECIDE_MODEL_SLUG: ${DECIDE_MODEL_SLUG:-}
       REASON_MODEL_SLUG: ${REASON_MODEL_SLUG:-}
-      EMBEDDING_MODEL_SLUG: ${EMBEDDING_MODEL_SLUG:-}
-      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-}
+      EMBEDDING_MODEL_SLUG: ${EMBEDDING_MODEL_SLUG:-perplexity/pplx-embed-v1-0.6b}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
       FAITHFULNESS_MODEL_ID: ${FAITHFULNESS_MODEL_ID:-}
       # The local HHEM faithfulness model downloads once, here, and stays
       # cached in a named volume so rebuilds of the container never re-fetch ~1GB
