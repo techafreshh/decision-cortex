@@ -287,6 +287,7 @@ Read-peephole using `@falkordb/mcpserver`: list node labels/relations, run read-
 | `REASON_MODEL_SLUG` | No | OpenRouter slug for S2 |
 | `EMBEDDING_MODEL_SLUG` | No | OpenRouter slug for retrieval embeddings; default `openai/text-embedding-3-small`. Must match the committed `snapshot/decision-embeddings.jsonl` (§15.3) |
 | `EMBEDDING_DIMENSION` | No | Retrieval embedding dimension; default 1536. Must match the committed artifact and the FalkorDB vector index (§15.3) |
+| `DECIDE_API` | No | S1 lane: `""` = chat/completions schema path (default); `decisions` = OpenRouter Alpha Decisions endpoint for decisions-class models (Jev, pplx-decider) with measured probability confidence |
 | `STANCES_MODEL_SLUG` | No | OpenRouter slug for the `ingest.stances` build-time classification; default = `DECIDE_MODEL_SLUG` |
 | `FAITHFULNESS_MODEL_ID` | No | Hugging Face id for the local faithfulness cross-encoder; default `vectara/hhallucination_evaluation_model` |
 | `SPEND_CAP_USD` | No | Hard-stop guard + ledger alerting (default 10) |

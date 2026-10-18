@@ -75,7 +75,7 @@ class FakeReader:
 
 
 def decide(answer: bool):
-    def _decide(prompt: str, *, yes_no: bool) -> llm.DecideResult[bool]:
+    def _decide(prompt: str, *, yes_no: bool, criteria=None) -> llm.DecideResult[bool]:
         return llm.DecideResult(choice=answer, confidence=0.9, escalated=False)
 
     return _decide

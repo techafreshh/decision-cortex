@@ -15,7 +15,7 @@ pipeline's job, not the router's.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
@@ -69,7 +69,11 @@ class _DecideFn(Protocol):
     """The ``decide`` seam; injected so tests never hit the network."""
 
     def __call__(
-        self, prompt: str, *, one_of: Sequence[str]
+        self,
+        prompt: str,
+        *,
+        one_of: Sequence[str],
+        criteria: Mapping[str, str] | None = None,
     ) -> llm.DecideResult[str]: ...
 
 
@@ -86,7 +90,11 @@ def router_classify(
     question: str, *, decide_fn: _DecideFn = llm.decide
 ) -> RouterResult:
     """Classify ``question`` into one of :data:`ROUTE_LABELS`."""
-    result = decide_fn(f"{_ROUTER_PROMPT}Question: {question}", one_of=ROUTE_LABELS)
+    result = decide_fn(
+        f"{_ROUTER_PROMPT}Question: {question}",
+        one_of=ROUTE_LABELS,
+        criteria={route.value: _ROUTE_DESCRIPTIONS[route] for route in Route},
+    )
     return RouterResult(
         label=Route(result.choice),
         confidence=result.confidence,

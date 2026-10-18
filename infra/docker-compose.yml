@@ -37,6 +37,9 @@ services:
       # key. api/llm.py resolves non-embedding slugs to their documented
       # defaults.
       DECIDE_MODEL_SLUG: ${DECIDE_MODEL_SLUG:-}
+      # S1 lane selector: "" = chat/completions schema path, "decisions" = the
+      # Alpha Decisions endpoint for decisions-class models (Jev, pplx-decider).
+      DECIDE_API: ${DECIDE_API:-}
       REASON_MODEL_SLUG: ${REASON_MODEL_SLUG:-}
       EMBEDDING_MODEL_SLUG: ${EMBEDDING_MODEL_SLUG:-perplexity/pplx-embed-v1-0.6b}
       EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}

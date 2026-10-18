@@ -36,10 +36,11 @@ restart):
 """
 
 import hashlib
+import json
 import os
 import threading
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Annotated, Literal, overload
@@ -49,6 +50,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_EMBEDDINGS_URL = "https://openrouter.ai/api/v1/embeddings"
+#: The Alpha Decisions endpoint serves "decisions-class" models (TypeSafe Jev,
+#: Perplexity pplx-decider) that refuse chat/completions: typed questions with
+#: per-option criteria, answered with real probability distributions.
+OPENROUTER_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
+
+#: S1 lane selection: "" (default) calls the chat/completions schema path;
+#: "decisions" calls the typed Decisions endpoint above.
+DECIDE_API_ENV = "DECIDE_API"
 
 # The PRD's small-model fallback: cheap, widely available on OpenRouter, and
 # reliable at emitting strict JSON. It is also the default slug for both
@@ -406,6 +415,7 @@ def decide(
     one_of: Sequence[str] | None = None,
     rating: tuple[int, int] | None = None,
     yes_no: bool | None = None,
+    criteria: Mapping[str | int, str] | Sequence[str] | None = None,
 ) -> DecideResult[str | int | bool]:
     """System-1 typed decision: 1-of-N, bounded rating, or y/n + confidence.
 
@@ -413,6 +423,14 @@ def decide(
     and then raises :class:`ModelOutputError`. Confidence below the escalation
     threshold re-asks the same typed question on the S2 model; the returned
     result and every record on that escalation path carry ``escalated=True``.
+
+    Lane selection: with ``DECIDE_API=decisions`` the S1 call goes to the
+    Decisions endpoint (:func:`_decide_via_decisions`) — decisions-class models
+    (TypeSafe Jev, Perplexity pplx-decider) answer with *measured* probability
+    distributions over the option criteria instead of a self-reported JSON
+    confidence. ``criteria`` carries the per-option descriptions that lane
+    needs; the chat lane ignores it. On any Decisions failure the ladder falls
+    back to the chat path on ``FALLBACK_MODEL_SLUG``.
     """
     shape = _selected_shape(one_of=one_of, rating=rating, yes_no=yes_no)
     model_cls = _choice_model(shape)
@@ -436,7 +454,12 @@ def decide(
 
     try:
         try:
-            s1 = attempt(_model_slug("DECIDE_MODEL_SLUG"), escalated=False)
+            if decisions_api_enabled():
+                s1 = _decide_via_decisions(
+                    shape, model_cls, prompt, criteria, pending, escalated=False
+                )
+            else:
+                s1 = attempt(_model_slug("DECIDE_MODEL_SLUG"), escalated=False)
         except ModelOutputError:
             s1 = attempt(FALLBACK_MODEL_SLUG, escalated=False)
 
@@ -452,6 +475,177 @@ def decide(
     finally:
         for trace, choice, confidence, escalated in pending:
             ledger_append(_trace_to_record(trace, choice, confidence, escalated))
+
+
+def decisions_api_enabled() -> bool:
+    """Whether the S1 lane is set to the Decisions endpoint (``DECIDE_API``)."""
+    return os.environ.get(DECIDE_API_ENV, "").strip().lower() == "decisions"
+
+
+def _post_decisions(payload: dict[str, object]) -> dict[str, object]:
+    """The single seam that talks to the Alpha Decisions endpoint; tests substitute."""
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key:
+        raise ModelOutputError(
+            "OPENROUTER_API_KEY is empty; OpenRouter is the only provider"
+        )
+    response = httpx.post(
+        OPENROUTER_DECISIONS_URL,
+        headers={"Authorization": f"Bearer {api_key}"},
+        json=payload,
+        timeout=_REQUEST_TIMEOUT_S,
+    )
+    if response.status_code != 200:
+        try:
+            detail = str(response.json().get("error", response.status_code))[:200]
+        except Exception:  # noqa: BLE001 — any body shape degrades to the status
+            detail = str(response.status_code)
+        raise ModelOutputError(f"decisions endpoint returned {response.status_code}: {detail}")
+    data = response.json()
+    if not isinstance(data, dict):
+        raise ModelOutputError("decisions endpoint returned a non-object body")
+    return data
+
+
+def _criteria_glosses(
+    labels: Sequence[str], criteria: Mapping[str | int, str] | Sequence[str] | None
+) -> dict[str, str]:
+    """Per-option descriptions: caller-supplied, else the labels themselves."""
+    if isinstance(criteria, Mapping):
+        return {str(label): str(criteria.get(label, label)) for label in labels}
+    seq = [str(item) for item in (criteria or [])]
+    return {
+        label: (seq[index] if index < len(seq) else str(label))
+        for index, label in enumerate(labels)
+    }
+
+
+def _decisions_question(
+    shape: _Shape, prompt: str, criteria: Mapping[str | int, str] | Sequence[str] | None
+) -> dict[str, object]:
+    """Map the decide() shape onto a Decisions question typed by the endpoint."""
+    if isinstance(shape, _OneOf):
+        return {
+            "q": {
+                "type": "choice",
+                "instructions": prompt,
+                "criteria": _criteria_glosses(list(shape.labels), criteria),
+            }
+        }
+    if isinstance(shape, _Rating):
+        values = list(range(shape.minimum, shape.maximum + 1))
+        if isinstance(criteria, Mapping):
+            glosses = [str(criteria.get(value, value)) for value in values]
+        else:
+            seq = [str(item) for item in (criteria or [])]
+            glosses = [
+                seq[index] if index < len(seq) else str(value)
+                for index, value in enumerate(values)
+            ]
+        return {
+            "q": {
+                "type": "score",
+                "instructions": prompt,
+                "criteria": glosses,
+            }
+        }
+    glosses = criteria if isinstance(criteria, Mapping) else {}
+    return {
+        "q": {
+            "type": "noul",
+            "instructions": prompt,
+            "criteria": {
+                "true": str(glosses.get("true", "the statement holds")),
+                "false": str(glosses.get("false", "the statement does not hold")),
+            },
+        }
+    }
+
+
+def _decisions_typed_choice(
+    shape: _Shape, model_cls: type[BaseModel], data: dict[str, object], model: str
+) -> _TypedChoice:
+    """Parse one ``q`` answer into the same typed contract the chat lane yields.
+
+    ``choice`` answers carry a label plus a measured probability distribution
+    (the confidence field is the winner's probability); ``score`` answers a
+    float on the scale (rounded to the nearest integer step and clamped);
+    ``noul`` answers the probability that the statement holds, from which the
+    boolean and its confidence are read.
+    """
+    answers = data.get("answers")
+    entry = answers.get("q") if isinstance(answers, dict) else None
+    if not isinstance(entry, dict):
+        raise ModelOutputError(f"{model} decisions response carried no 'q' answer")
+
+    kind = entry.get("type")
+    try:
+        if kind == "choice":
+            choice: str | bool | int = str(entry["choice"])
+            confidence = float(entry["confidence"])
+        elif kind == "score":
+            score = float(entry["score"])
+            if isinstance(shape, _Rating):
+                score = min(max(score, shape.minimum), shape.maximum)
+            choice = round(score)  # rounds to a valid scale step; already numeric
+            confidence = float(entry["confidence"])
+        elif kind == "noul":
+            probability = float(entry["noul"])
+            choice = probability >= 0.5
+            confidence = max(probability, 1.0 - probability)
+        else:
+            raise ModelOutputError(
+                f"{model} decisions response had unknown answer type {kind!r}"
+            )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ModelOutputError(f"{model} decisions answer malformed: {exc}") from exc
+
+    try:
+        verdict = model_cls.model_validate_json(
+            json.dumps({"choice": choice, "confidence": confidence})
+        )
+    except ValidationError as exc:
+        raise ModelOutputError(
+            f"{model} decisions answer violates the typed contract: {exc}"
+        ) from exc
+    return _TypedChoice(choice=verdict.choice, confidence=verdict.confidence)
+
+
+def _decide_via_decisions(
+    shape: _Shape,
+    model_cls: type[BaseModel],
+    prompt: str,
+    criteria: Mapping[str | int, str] | Sequence[str] | None,
+    pending: list[tuple[_CallTrace, str | bool | int, float | None, bool]],
+    *,
+    escalated: bool,
+) -> _TypedChoice:
+    """One S1 decision through the Decisions endpoint; ledger row on completion."""
+    _enforce_spend_cap()
+    slug = _model_slug("DECIDE_MODEL_SLUG")
+    payload = {
+        "model": slug,
+        "questions": _decisions_question(shape, prompt, criteria),
+        "state": {"prompt": prompt},
+    }
+    started = time.monotonic()
+    data = _post_decisions(payload)
+    latency_ms = int((time.monotonic() - started) * 1000)
+    typed = _decisions_typed_choice(shape, model_cls, data, slug)
+    usage = data.get("usage")
+    trace = _CallTrace(
+        model=slug,
+        input_digest=_input_digest(f"decisions:{slug}", prompt),
+        content=json.dumps({"answers": data.get("answers"), "type": typed.choice}, default=str),
+        latency_ms=latency_ms,
+        cost_usd=(
+            float(usage["cost"])
+            if isinstance(usage, dict) and isinstance(usage.get("cost"), int | float)
+            else 0.0
+        ),
+    )
+    pending.append((trace, typed.choice, typed.confidence, escalated))
+    return typed
 
 
 def reason(prompt: str) -> str:

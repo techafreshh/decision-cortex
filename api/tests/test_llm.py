@@ -356,3 +356,130 @@ def test_post_chat_completion_rejects_a_non_object_body(
 
     with pytest.raises(llm.ModelOutputError):
         llm._post_chat_completion({"model": "m"})
+
+DECISIONS_ENV_VARS = (*ENV_VARS, "DECIDE_API")
+
+
+def _decisions_body(
+    model: str = "perplexity/pplx-decider-flash-v1.2", **answers: object
+) -> dict[str, object]:
+    return {
+        "model": model,
+        "answers": answers,
+        "usage": {"input_tokens": 120, "output_tokens": 1, "cost": 0.0000016},
+    }
+
+
+def test_decisions_api_enabled_parses_the_lane(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DECIDE_API", raising=False)
+    assert llm.decisions_api_enabled() is False
+    monkeypatch.setenv("DECIDE_API", "decisions")
+    assert llm.decisions_api_enabled() is True
+    monkeypatch.setenv("DECIDE_API", "chat")
+    assert llm.decisions_api_enabled() is False
+
+
+def test_decide_via_decisions_one_of_maps_choice_and_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DECIDE_API", "decisions")
+    monkeypatch.setenv("DECIDE_MODEL_SLUG", "perplexity/pplx-decider-flash-v1.2")
+    sent: list[dict[str, object]] = []
+
+    def fake_post(payload: dict[str, object]) -> dict[str, object]:
+        sent.append(payload)
+        return _decisions_body(
+            q={
+                    "type": "choice",
+                    "choice": "decision-provenance",
+                    "probabilities": {"fact": 0.01, "decision-provenance": 0.99},
+                    "confidence": 0.99,
+                }
+        )
+
+    monkeypatch.setattr(llm, "_post_decisions", fake_post)
+
+    result = llm.decide(
+        "Route the question.", one_of=["fact", "decision-provenance"],
+        criteria={"fact": "stated in corpus", "decision-provenance": "objections"},
+    )
+
+    assert result.choice == "decision-provenance"
+    assert result.confidence == pytest.approx(0.99)
+    assert result.escalated is False
+    questions = sent[0]["questions"]
+    assert questions["q"]["type"] == "choice"
+    assert questions["q"]["criteria"] == {
+        "fact": "stated in corpus", "decision-provenance": "objections"
+    }
+    # The run's ledger row carries the real per-call cost from the endpoint.
+    rows = [r for r in llm.ledger_records() if r.model.startswith("perplexity/")]
+    assert len(rows) == 1
+    assert rows[0].cost_usd == pytest.approx(0.0000016)
+    assert rows[0].escalated is False
+
+
+def test_decide_via_decisions_yes_no_reads_the_noul_probability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DECIDE_API", "decisions")
+
+    def fake_post(payload: dict[str, object]) -> dict[str, object]:
+        noul = 0.7 if payload["state"] == {"prompt": "round 1: is it enough?"} else 0.35
+        return _decisions_body(q={"type": "noul", "noul": noul})
+
+    monkeypatch.setattr(llm, "_post_decisions", fake_post)
+
+    yes = llm.decide("round 1: is it enough?", yes_no=True)
+    no = llm.decide("round 2: is it enough?", yes_no=False)
+
+    assert yes.choice is True and yes.confidence == pytest.approx(0.7)
+    assert no.choice is False and no.confidence == pytest.approx(0.65)
+
+
+def test_decide_via_decisions_score_clamps_to_the_scale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DECIDE_API", "decisions")
+
+    def fake_post(payload: dict[str, object]) -> dict[str, object]:
+        return _decisions_body(q={"type": "score", "score": 8.6, "confidence": 0.9})
+
+    monkeypatch.setattr(llm, "_post_decisions", fake_post)
+
+    result = llm.decide("rate relevance", rating=(0, 5))
+
+    assert result.choice == 5
+    assert result.confidence == pytest.approx(0.9)
+
+
+def test_decisions_failure_ladder_lands_on_the_chat_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DECIDE_API", "decisions")
+
+    def broken(payload: dict[str, object]) -> dict[str, object]:
+        raise llm.ModelOutputError("decisions endpoint returned 500: down")
+
+    chat_calls: list[dict[str, object]] = []
+
+    def fake_chat(payload: dict[str, object]) -> dict[str, object]:
+        chat_calls.append(payload)
+        return {
+            "choices": [
+                {"message": {"content": json.dumps({"choice": "impact", "confidence": 0.9})}}
+            ]
+        }
+
+    monkeypatch.setattr(llm, "_post_decisions", broken)
+    monkeypatch.setattr(llm, "_post_chat_completion", fake_chat)
+
+    result = llm.decide("Route.", one_of=["fact", "impact"])
+
+    assert result.choice == "impact"
+    assert len(chat_calls) == 1
+    rows = llm.ledger_records()
+    assert rows[-1].model == llm.FALLBACK_MODEL_SLUG
+    assert rows[-1].choice == "impact"
+    # The failed decisions lane must not bill anything to the ledger.
+    assert all("decisions endpoint" not in str(row.choice) for row in rows)

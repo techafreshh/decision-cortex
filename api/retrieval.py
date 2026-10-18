@@ -96,6 +96,13 @@ DEFAULT_TOP_K = 5
 
 _RETRIEVAL_MODEL = "retrieval:graph-native"
 
+#: Per-option descriptions for the sufficiency gate's Decisions lane: the
+#: criterion *is* the stop rule, so the typed question self-describes.
+SUFFICIENCY_CRITERIA = {
+    "true": "Evidence gathered is sufficient to answer — stop expanding.",
+    "false": "One more traversal hop is likely to add evidence the answer needs.",
+}
+
 
 class GraphReader(Protocol):
     """The FalkorDB read seam; tests inject a fake returning plain rows."""
@@ -194,7 +201,13 @@ class SufficiencyFacts:
 
 
 class _DecideYesNo(Protocol):
-    def __call__(self, prompt: str, *, yes_no: bool) -> llm.DecideResult[bool]: ...
+    def __call__(
+        self,
+        prompt: str,
+        *,
+        yes_no: bool,
+        criteria: Mapping[str, str] | None = None,
+    ) -> llm.DecideResult[bool]: ...
 
 
 class _Embedder(Protocol):
@@ -335,7 +348,11 @@ def sufficiency_stop(
     facts: SufficiencyFacts, *, decide_fn: _DecideYesNo = llm.decide
 ) -> bool:
     """Ask the S1 model whether the gathered evidence is sufficient (yes/no)."""
-    result = decide_fn(_sufficiency_prompt(facts), yes_no=True)
+    result = decide_fn(
+        _sufficiency_prompt(facts),
+        yes_no=True,
+        criteria=SUFFICIENCY_CRITERIA,
+    )
     return bool(result.choice)
 
 

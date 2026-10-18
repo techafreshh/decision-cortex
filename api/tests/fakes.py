@@ -108,7 +108,7 @@ class PipelineDecide:
         self._gate_index = 0
         self.sufficient = sufficient
 
-    def __call__(self, prompt: str, *, one_of=None, rating=None, yes_no=None):
+    def __call__(self, prompt: str, *, one_of=None, rating=None, yes_no=None, criteria=None):
         if yes_no is not None:
             return llm.DecideResult(
                 choice=self.sufficient, confidence=0.9, escalated=False

@@ -14,7 +14,7 @@ and routes the answer to abstention rather than shipping an unsupported claim.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -32,7 +32,11 @@ class _DecideFn(Protocol):
     """The ``decide`` seam; injected so tests never hit the network."""
 
     def __call__(
-        self, prompt: str, *, one_of: Sequence[str]
+        self,
+        prompt: str,
+        *,
+        one_of: Sequence[str],
+        criteria: Mapping[str, str] | None = None,
     ) -> llm.DecideResult[str]: ...
 
 
@@ -59,7 +63,11 @@ def claim_gate(
 
     labels = [f"e{index}" for index in range(len(evidence))] + ["none"]
     try:
-        result = decide_fn(_gate_prompt(sentence, evidence), one_of=labels)
+        result = decide_fn(
+            _gate_prompt(sentence, evidence),
+            one_of=labels,
+            criteria=_gate_criteria(evidence),
+        )
     except llm.ModelOutputError:
         return _uncited(sentence, confidence=None, escalated=False)
 
@@ -86,6 +94,24 @@ def _uncited(
         evidence_ids=(),
         escalated=escalated,
     )
+
+
+def _gate_criteria(evidence: Sequence[EvidenceNode]) -> dict[str, str]:
+    """Per-option descriptions for the Decisions lane: each candidate's identity.
+
+    On the Decisions endpoint the criteria *are* the choice semantics, so the
+    gloss for ``eN`` is the node's own line plus its grounded snapshot text —
+    the model chooses between the actual evidence, not between opaque ids.
+    """
+    glosses = {
+        f"e{index}": evidence_line(node) for index, node in enumerate(evidence)
+    }
+    glosses["none"] = "No evidence node supports the sentence."
+    for index, node in enumerate(evidence):
+        text = evidence_text.evidence_text(node)
+        if text:
+            glosses[f"e{index}"] = f"{glosses[f'e{index}']} — {text[:GATE_TEXT_LIMIT]}"
+    return glosses
 
 
 def _gate_prompt(sentence: str, evidence: Sequence[EvidenceNode]) -> str:

@@ -16,7 +16,7 @@ EVIDENCE = (
 
 
 def verdict(choice: str, *, confidence: float = 0.8, escalated: bool = False):
-    def decide(prompt: str, *, one_of):
+    def decide(prompt: str, *, one_of, criteria=None):
         assert "e0" in one_of and "none" in one_of
         return llm.DecideResult(choice=choice, confidence=confidence, escalated=escalated)
 
@@ -45,7 +45,7 @@ def test_gate_propagates_escalation() -> None:
 
 
 def test_gate_without_evidence_never_calls_the_model() -> None:
-    def decide(prompt: str, *, one_of):
+    def decide(prompt: str, *, one_of, criteria=None):
         raise AssertionError("the gate must not call the model with no evidence")
 
     result = claim_gate("A sentence.", (), decide_fn=decide)
@@ -56,7 +56,7 @@ def test_gate_without_evidence_never_calls_the_model() -> None:
 
 
 def test_gate_treats_unusable_model_output_as_uncited() -> None:
-    def decide(prompt: str, *, one_of):
+    def decide(prompt: str, *, one_of, criteria=None):
         raise llm.ModelOutputError("not schema-valid")
 
     result = claim_gate("A sentence.", EVIDENCE, decide_fn=decide)
@@ -69,7 +69,7 @@ def test_gate_treats_unusable_model_output_as_uncited() -> None:
 def test_gate_prompt_labels_every_evidence_node() -> None:
     prompts: list[str] = []
 
-    def decide(prompt: str, *, one_of):
+    def decide(prompt: str, *, one_of, criteria=None):
         prompts.append(prompt)
         return llm.DecideResult(choice="e0", confidence=0.9, escalated=False)
 
