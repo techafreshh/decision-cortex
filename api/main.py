@@ -35,9 +35,9 @@ from api.exports import ExportError, export_filename, render_graph, render_repor
 from api.impact import IMPACT_MAX_DEPTH, build_impact
 from api.nodes import node_detail
 from api.retrieval import connect_from_env
+from api.seed import graph_is_seeded
 from api.timeline import build_timeline
 from api.tours import build_tour
-from api.seed import graph_is_seeded
 
 
 app = FastAPI(title="Decision Cortex API")
