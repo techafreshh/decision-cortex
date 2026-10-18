@@ -226,6 +226,10 @@ def test_committed_corpus_builds_expected_counts() -> None:
         "ASSOCIATED_TEAM": 1_554,
         "AREA": 1_609,
         "SUPERSEDES": 3,
+        # One per committed snapshot/stances.jsonl row, split by kind.
+        "OBJECTED": 594,
+        "SUPPORTED": 1_241,
+        "MODERATED": 869,
     }
 
 
