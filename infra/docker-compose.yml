@@ -30,6 +30,13 @@ services:
       SNAPSHOT_DIR: snapshot
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       SPEND_CAP_USD: ${SPEND_CAP_USD:-10}
+      # Model slugs: config changes, never code (PRD §9.1). Empty string
+      # resolves to the documented default inside api/llm.py.
+      DECIDE_MODEL_SLUG: ${DECIDE_MODEL_SLUG:-}
+      REASON_MODEL_SLUG: ${REASON_MODEL_SLUG:-}
+      EMBEDDING_MODEL_SLUG: ${EMBEDDING_MODEL_SLUG:-}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-}
+      FAITHFULNESS_MODEL_ID: ${FAITHFULNESS_MODEL_ID:-}
       # The local HHEM faithfulness model downloads once, here, and stays
       # cached in a named volume so rebuilds of the container never re-fetch ~1GB
       # of weights from the Hugging Face hub.

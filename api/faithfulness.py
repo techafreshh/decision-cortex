@@ -55,6 +55,12 @@ DEFAULT_THRESHOLD = 0.5
 
 THRESHOLD_ENV = "FAITHFULNESS_THRESHOLD"
 
+#: The scorer model is env-configurable (`FAITHFULNESS_MODEL_ID`, a Hugging
+#: Face sequence-pair cross-encoder). The default is HHEM-2.1-Open; a swap also
+#: changes the polarity assumption — re-run the sanity check in
+#: ``docs/faithfulness-notes.md`` before trusting the badge.
+MODEL_ID_ENV = "FAITHFULNESS_MODEL_ID"
+
 #: HHEM's tokenizer input budget; premises are already bounded per evidence
 #: text by :data:`api.evidence_text.EVIDENCE_TEXT_LIMIT`.
 _MAX_LENGTH = 512
@@ -145,19 +151,27 @@ def threshold_from_env() -> float:
     return value
 
 
+def model_id_from_env() -> str:
+    """The scorer's Hugging Face id (``FAITHFULNESS_MODEL_ID`` or default)."""
+    return os.environ.get(MODEL_ID_ENV, "").strip() or HHEM_MODEL_ID
+
+
 def score_answer(
     claims: Sequence[ClaimInput],
     texts_by_id: dict[str, str],
     *,
     score_fn: PairScorer,
     threshold: float = DEFAULT_THRESHOLD,
+    model_label: str | None = None,
 ) -> FaithfulnessReport:
     """Score every claim against its cited evidence text; aggregate RAGAS-style.
 
     ``texts_by_id`` maps evidence node ids to their real snapshot text (the
     endpoint builds it from the resolved evidence nodes). One batched
     cross-encoder call scores all pairs; for each claim its strongest (max)
-    text score decides, mirroring "supported by which evidence".
+    text score decides, mirroring "supported by which evidence". The report's
+    ``model`` field is the scorer's configured id when the caller supplies one
+    (stubs carry none), else the zero-cost ledger label.
     """
     started = time.monotonic()
     scored = _score_claims(claims, texts_by_id, score_fn, threshold)
@@ -172,7 +186,7 @@ def score_answer(
         claims_scored=sum(1 for c in scored if c.status == "scored"),
         claims_unresolved=sum(1 for c in scored if c.status == "unresolved"),
         threshold=threshold,
-        model=_SCORER_MODEL,
+        model=model_label or _SCORER_MODEL,
         latency_ms=int((time.monotonic() - started) * 1000),
         claims=tuple(scored),
     )
@@ -334,5 +348,5 @@ def get_scorer() -> HHEMScorer:
     global _scorer
     with _scorer_lock:
         if _scorer is None:
-            _scorer = HHEMScorer()
+            _scorer = HHEMScorer(model_id=model_id_from_env())
         return _scorer

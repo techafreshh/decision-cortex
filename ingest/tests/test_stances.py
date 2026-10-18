@@ -178,6 +178,43 @@ def test_classify_batch_refuses_without_a_key(
         ])
 
 
+def test_model_slug_resolution_prefers_the_stances_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(stances.STANCES_MODEL_SLUG_ENV, raising=False)
+    monkeypatch.setenv("DECIDE_MODEL_SLUG", "org/decide-model")
+    assert stances.stance_model_slug() == "org/decide-model"
+
+    monkeypatch.setenv(stances.STANCES_MODEL_SLUG_ENV, "org/stances-model")
+    assert stances.stance_model_slug() == "org/stances-model"
+
+
+def test_classify_batch_builds_prompts_for_the_configured_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(stances.STANCES_MODEL_SLUG_ENV, "org/stances-model")
+    used: list[str] = []
+
+    def spy(model: str, prompt: str) -> llm._CallTrace:
+        used.append(model)
+        return llm._CallTrace(
+            model=model, input_digest="d",
+            content=verdicts([
+                {"handle": "alice", "rfc": 2394, "stance": "SUPPORTED", "confidence": 0.9},
+            ]),
+            latency_ms=5, cost_usd=0.0,
+        )
+
+    monkeypatch.setattr(stances, "_classify_call", spy)
+
+    rows = stances.classify_batch([
+        Pair("alice", 2394, "t", ({"comment_id": 1, "body": "b", "url": "u"},))
+    ])
+
+    assert used == ["org/stances-model"]
+    assert rows[0].stance == "SUPPORTED"
+
+
 def test_derive_stances_runs_batched_and_preserves_pair_order(
     snapshot: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

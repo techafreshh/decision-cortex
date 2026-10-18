@@ -50,6 +50,14 @@ def _classify_call(model: str, prompt: str) -> llm._CallTrace:
         temperature=0.0,
     )
 
+
+def stance_model_slug() -> str:
+    """The build step's model slug: ``STANCES_MODEL_SLUG``, else the S1 slug."""
+    return (
+        os.environ.get(STANCES_MODEL_SLUG_ENV, "").strip()
+        or llm._model_slug("DECIDE_MODEL_SLUG")
+    )
+
 SNAPSHOT_DIR = "snapshot"
 COMMENTS_FILE = "pr-comments.jsonl"
 RFCS_FILE = "rfcs.jsonl"
@@ -63,6 +71,11 @@ CHARS_PER_COMMENT = 500
 #: Pairs classified per model call. Batches of this size keep each prompt well
 #: under the decision model's context while sharing the schema overhead.
 PAIRS_PER_BATCH = 8
+
+#: Optional model-slug override for this build step only; unset, it rides the
+#: serving path's S1 slug (``DECIDE_MODEL_SLUG``) — same extraction doctrine,
+#: one knob when the build needs a different tradeoff than the live router.
+STANCES_MODEL_SLUG_ENV = "STANCES_MODEL_SLUG"
 
 #: Infrastructure accounts whose comments never carry a human stance.
 _BOT_AUTHORS = frozenset({"rfcbot", "bors", "rust-highfive", "rfcsbot", "github-actions"})
@@ -204,7 +217,7 @@ def classify_batch(
             "OPENROUTER_API_KEY is empty; stance classification needs a key"
         )
     prompt = batch_prompt(pairs)
-    model = decide_model or llm._model_slug("DECIDE_MODEL_SLUG")
+    model = decide_model or stance_model_slug()
     try:
         trace = _classify_call(model, prompt)
         batch = StanceBatch.model_validate_json(trace.content)

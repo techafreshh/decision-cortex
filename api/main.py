@@ -146,6 +146,7 @@ def faithfulness_score(request: FaithfulnessRequest) -> dict[str, Any]:
         {eid for claim in request.claims for eid in claim.evidence_ids}
     )
     try:
+        scorer = faithfulness.get_scorer()
         texts = evidence_text.resolve_evidence_texts(reader, unique_ids)
         report = faithfulness.score_answer(
             [
@@ -155,8 +156,9 @@ def faithfulness_score(request: FaithfulnessRequest) -> dict[str, Any]:
                 for claim in request.claims
             ],
             texts,
-            score_fn=faithfulness.get_scorer(),
+            score_fn=scorer,
             threshold=faithfulness.threshold_from_env(),
+            model_label=getattr(scorer, "model_id", None),
         )
     except faithfulness.FaithfulnessUnavailableError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error

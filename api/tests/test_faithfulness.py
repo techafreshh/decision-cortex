@@ -165,6 +165,27 @@ def test_threshold_env_is_parsed_and_bounded(monkeypatch: pytest.MonkeyPatch) ->
         faithfulness.threshold_from_env()
 
 
+def test_scorer_model_id_is_env_configurable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("FAITHFULNESS_MODEL_ID", raising=False)
+    assert faithfulness.model_id_from_env() == faithfulness.HHEM_MODEL_ID
+
+    monkeypatch.setenv("FAITHFULNESS_MODEL_ID", "my-org/my-cross-encoder")
+    scorer = faithfulness.HHEMScorer(model_id=faithfulness.model_id_from_env())
+    assert scorer.model_id == "my-org/my-cross-encoder"
+
+    # The report carries the configured id, not just the zero-cost label.
+    report = faithfulness.score_answer(
+        [faithfulness.ClaimInput("First.", ("message:1",))],
+        {"message:1": "one"},
+        score_fn=StubScorer([1.0]),
+        model_label="my-org/my-cross-encoder",
+        threshold=0.5,
+    )
+    assert report.model == "my-org/my-cross-encoder"
+
+
 def test_scorer_rejects_mismatched_batches() -> None:
     scorer = faithfulness.HHEMScorer()
     with pytest.raises(ValueError):
