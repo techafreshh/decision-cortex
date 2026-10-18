@@ -39,7 +39,6 @@ from api.seed import graph_is_seeded
 from api.timeline import build_timeline
 from api.tours import build_tour
 
-
 app = FastAPI(title="Decision Cortex API")
 
 
