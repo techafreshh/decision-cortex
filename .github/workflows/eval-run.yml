@@ -28,6 +28,10 @@ jobs:
       FALKORDB_HOST: 127.0.0.1
       FALKORDB_PORT: '6379'
       FALKORDB_GRAPH: decision_cortex
+      # Must match the committed snapshot/decision-embeddings.jsonl so the
+      # loader builds the vector index the live pipeline seeds from.
+      EMBEDDING_MODEL_SLUG: perplexity/pplx-embed-v1-0.6b
+      EMBEDDING_DIMENSION: '1024'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
