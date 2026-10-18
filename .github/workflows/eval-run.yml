@@ -1,7 +1,7 @@
 # Owner-triggered real-eval run: the 30 gold + 10 no-record verification set
-# against the live OpenRouter stack. NEVER runs on push or PR. Budgeted per
-# the $10 doctrine: spend-capped key from repo secrets + hard timeout +
-# single-concurrency. Fire with: gh workflow run eval-run
+# against the live OpenRouter stack (POST /verification/run, PRD §10). NEVER
+# runs on push or PR. Budgeted per the $10 doctrine: spend-capped key from repo
+# secrets + hard timeout + single-concurrency. Fire with: gh workflow run eval-run
 name: eval-run
 
 on:
@@ -19,25 +19,70 @@ jobs:
     name: verification set (real LLM, spend-capped)
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      falkordb:
+        image: falkordb/falkordb:6.0.2
+        ports:
+          - 6379:6379
+    env:
+      FALKORDB_HOST: 127.0.0.1
+      FALKORDB_PORT: '6379'
+      FALKORDB_GRAPH: decision_cortex
     steps:
       - uses: actions/checkout@v7
-      - name: Guard (runner not scaffolded yet)
-        run: |
-          if [ ! -d verification ]; then
-            echo '::notice::verification/ not scaffolded yet — nothing to eval'
-            exit 0
-          fi
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install
+        # [dev] only — the eval needs the LLM API, never the local HHEM extra.
         run: |
           python -m pip install -U pip
-          pip install -e '.[dev]' || pip install -r requirements.txt || pip install pytest
-      - name: Run verification set
-        # SPEND_CAP_USD is a guard the runner must honor (AGENTS.md budget
-        # doctrine); the runner refuses to start without a key.
+          pip install -e '.[dev]'
+      - name: Wait for FalkorDB
+        run: |
+          for i in $(seq 1 30); do
+            if redis-cli -h 127.0.0.1 ping 2>/dev/null | grep -q PONG; then
+              echo "falkordb is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "falkordb never came up"; exit 1
+      - name: Load the committed snapshot (idempotent, LLM-free)
+        run: |
+          python - <<'PY'
+          import asyncio
+          from ingest.graph import ingest_snapshot
+
+          asyncio.run(
+              ingest_snapshot("snapshot", host="127.0.0.1", port=6379,
+                              graph_name="decision_cortex")
+          )
+          PY
+      - name: Run the verification set (POST /verification/run)
+        # SPEND_CAP_USD is the same guard the serving path enforces; the
+        # endpoint refuses to start without a key. The report prints to the
+        # job log and downloads as an artifact.
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           SPEND_CAP_USD: '10'
-        run: pytest -q verification -m live --timeout=1200
+        run: |
+          python - <<'PY'
+          import json
+          from fastapi.testclient import TestClient
+          from api.main import app
+
+          with TestClient(app) as client:
+              response = client.post("/verification/run", timeout=1200)
+          print("status:", response.status_code)
+          report = response.json()
+          print(json.dumps(report, indent=2, ensure_ascii=False))
+          with open("verification-report.json", "w", encoding="utf-8") as handle:
+              json.dump(report, handle, indent=2, ensure_ascii=False)
+          if response.status_code != 200:
+              raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-report
+          path: verification-report.json

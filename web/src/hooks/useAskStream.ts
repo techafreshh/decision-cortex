@@ -61,10 +61,21 @@ export function useAskStream(): UseAskStream {
       }
       if (!finished || claims.length === 0) return
       // The stream is done; scoring is the badge's out-of-band phase. It must
-      // never fail the run, so its outcome lands as a plain state patch.
-      const [report, message] = await scoreFaithfulness(claims, controller.signal)
-      if (controllerRef.current === controller) {
-        dispatch({ kind: 'faithfulness', report, message })
+      // never fail the run (abort or network error land as a badge state), so
+      // its outcome is dispatched as a plain state patch.
+      try {
+        const [report, message] = await scoreFaithfulness(claims, controller.signal)
+        if (controllerRef.current === controller) {
+          dispatch({ kind: 'faithfulness', report, message })
+        }
+      } catch (scoringError) {
+        if (!controller.signal.aborted && controllerRef.current === controller) {
+          dispatch({
+            kind: 'faithfulness',
+            report: null,
+            message: scoringError instanceof Error ? scoringError.message : String(scoringError),
+          })
+        }
       }
     })()
   }, [])
