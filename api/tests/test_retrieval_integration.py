@@ -43,7 +43,9 @@ def _reset(host: str, port: int) -> None:
     )
 
 
-def _sufficient(_prompt: str, *, yes_no: bool) -> llm.DecideResult[bool]:
+def _sufficient(
+    _prompt: str, *, yes_no: bool, criteria: Mapping[str, str] | None = None
+) -> llm.DecideResult[bool]:
     return llm.DecideResult(choice=False, confidence=0.9, escalated=False)
 
 
