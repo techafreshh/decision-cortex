@@ -1,39 +1,48 @@
 import { useState } from 'react'
 
-import { AnswerCard } from './components/AnswerCard'
-import { CypherPeek } from './components/CypherPeek'
-import { FaithfulnessBadge } from './components/FaithfulnessBadge'
 import { ImpactView } from './components/ImpactView'
 import { Landing } from './components/Landing'
-import { LedgerFooter } from './components/LedgerFooter'
-import { NoRecordCard } from './components/NoRecordCard'
-import { OpenNodeProvider, SourcePanel } from './components/SourcePanel'
-import { ShowYourWork } from './components/ShowYourWork'
+import { Composer } from './components/Composer'
 import { TimelinePanel } from './components/TimelineView'
+import { OpenNodeProvider, SourcePanel } from './components/SourcePanel'
+import { Thread } from './components/chat/Thread'
 import { Button } from './components/kit/Button'
-import { useAskStream, type UseAskStream } from './hooks/useAskStream'
-import { hasRun } from './state/runStore'
+import { useThread } from './hooks/useThread'
+import type { AskRequest } from './api/ask'
 
-type View = 'ask' | 'impact' | 'timeline'
+type View = 'chat' | 'impact' | 'timeline'
 
 const VIEWS: { key: View; label: string }[] = [
-  { key: 'ask', label: 'Ask' },
+  { key: 'chat', label: 'Chat' },
   { key: 'impact', label: 'Impact' },
   { key: 'timeline', label: 'Timeline' },
 ]
 
 function App() {
-  const { state, ask, clear } = useAskStream()
+  const { state, ask, discard } = useThread()
   const [openNodeId, setOpenNodeId] = useState<string | null>(null)
-  const [view, setView] = useState<View>('ask')
-  const showRun = hasRun(state)
+  const [view, setView] = useState<View>('chat')
+
+  const onAsk = (request: AskRequest, text: string) => {
+    setView('chat')
+    ask(request, text)
+  }
 
   return (
     <OpenNodeProvider value={setOpenNodeId}>
       <div className="app">
         <header className="app__head">
-          <span className="app__brand">Decision Cortex</span>
-          <span className="app__tag">a company brain over rust-lang/rfcs</span>
+          <div className="app__brandBlock">
+            <span className="app__brand">
+              <span className="app__spark" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor">
+                  <path d="M8 0l2.2 5.8L16 8l-5.8 2.2L8 16l-2.2-5.8L0 8l5.8-2.2L8 0z" />
+                </svg>
+              </span>
+              Decision Cortex
+            </span>
+            <span className="app__tag">a company brain over rust-lang/rfcs</span>
+          </div>
           <nav className="app__nav" aria-label="Views">
             {VIEWS.map((entry) => (
               <Button
@@ -45,20 +54,52 @@ function App() {
               </Button>
             ))}
           </nav>
+          {state.totals.totalCalls > 0 ? (
+            <span
+              className="app__totals"
+              title="Deploy-wide decision-ledger totals across every answer so far"
+            >
+              {state.totals.totalCalls} decisions · $
+              {state.totals.totalCostUsd.toFixed(4)}
+            </span>
+          ) : null}
         </header>
 
-        {view === 'ask' ? (
-          <AskView state={state} ask={ask} clear={clear} showRun={showRun} />
+        {view === 'chat' ? (
+          <>
+            {state.entries.length === 0 ? (
+              <div className="app__scroll app__scroll--center">
+                <Landing
+                  onAsk={onAsk}
+                  disabled={state.runningId !== null}
+                />
+              </div>
+            ) : (
+              <Thread state={state} />
+            )}
+            <footer className="app__composerBar">
+              {state.entries.length > 0 ? (
+                <Button variant="ghost" className="app__discard" onClick={discard}>
+                  New conversation
+                </Button>
+              ) : null}
+              <Composer
+                onAsk={onAsk}
+                disabled={state.runningId !== null}
+                chips={state.entries.length > 0}
+              />
+            </footer>
+          </>
         ) : null}
 
         {view === 'impact' ? (
-          <main className="app__main">
+          <main className="app__scroll app__main">
             <ImpactView />
           </main>
         ) : null}
 
         {view === 'timeline' ? (
-          <main className="app__main">
+          <main className="app__scroll app__main">
             <TimelinePanel />
           </main>
         ) : null}
@@ -66,55 +107,6 @@ function App() {
         <SourcePanel nodeId={openNodeId} onClose={() => setOpenNodeId(null)} />
       </div>
     </OpenNodeProvider>
-  )
-}
-
-function AskView({
-  state,
-  ask,
-  clear,
-  showRun,
-}: Pick<UseAskStream, 'state' | 'ask' | 'clear'> & { showRun: boolean }) {
-  if (!showRun) {
-    return <Landing onAsk={ask} disabled={state.running} />
-  }
-
-  return (
-    <main className="app__main">
-      <div className="app__question">
-        <p className="app__questionText">{state.question}</p>
-        <Button variant="ghost" onClick={clear}>
-          New question
-        </Button>
-      </div>
-
-      {state.error === null ? null : (
-        <p className="error">Run failed: {state.error}</p>
-      )}
-
-      {state.running ? <p className="muted">Retrieving…</p> : null}
-
-      <AnswerCard question={state.question} sentences={state.sentences} />
-
-      {state.abstention === null ? null : (
-        <NoRecordCard question={state.question} receipt={state.abstention} />
-      )}
-
-      {state.faithfulnessPending ? (
-        <FaithfulnessBadge
-          pending={state.faithfulnessPending}
-          report={state.faithfulness}
-          error={state.faithfulnessError}
-          hasSentences={state.sentences.length > 0}
-        />
-      ) : null}
-
-      <CypherPeek queries={state.queries} />
-
-      <ShowYourWork traces={state.traces} />
-
-      {state.ledger === null ? null : <LedgerFooter ledger={state.ledger} />}
-    </main>
   )
 }
 

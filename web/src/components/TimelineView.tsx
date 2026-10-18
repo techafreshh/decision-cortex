@@ -320,7 +320,25 @@ export function TimelinePanel() {
     })
   }
 
-  if (status === 'loading') return <p className="muted">Loading the timeline…</p>
+  if (status === 'loading') {
+    return (
+      <div className="timeline" role="status">
+        <span className="sr-only">Loading the timeline…</span>
+        <div className="skeletonCard">
+          <div className="skeletonCard__bar" />
+          <div className="skeletonCard__bar skeletonCard__bar--block" />
+          <div className="skeletonCard__bar skeletonCard__bar--short" />
+        </div>
+        <div className="skeletonCard">
+          <div className="skeletonCard__bar" />
+          <div className="skeletonCard__bar skeletonCard__bar--short" />
+        </div>
+        <div className="skeletonCard">
+          <div className="skeletonCard__bar skeletonCard__bar--short" />
+        </div>
+      </div>
+    )
+  }
   if (status === 'error' || timeline === null) {
     return <p className="error">{error ?? 'timeline unavailable'}</p>
   }

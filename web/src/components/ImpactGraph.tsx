@@ -11,6 +11,7 @@ import {
   Background,
   Controls,
   ReactFlow,
+  useStore,
   type NodeProps,
   type NodeTypes,
 } from '@xyflow/react'
@@ -22,8 +23,13 @@ import { impactFlow, type ImpactFlowNode } from '../lib/impactFlow'
 
 const SelectNodeContext = createContext<(id: string) => void>(() => {})
 
+/** Below this zoom the depth/kind meta hides — dozens of sublabels at full
+ * blast radius is noise; names alone stay legible. */
+const META_ZOOM = 0.75
+
 function ImpactNodeView({ id, data }: NodeProps<ImpactFlowNode>) {
   const selectNode = useContext(SelectNodeContext)
+  const zoom = useStore((state) => state.transform[2])
   const depth = Math.min(data.depth, 3)
   return (
     <button
@@ -32,9 +38,11 @@ function ImpactNodeView({ id, data }: NodeProps<ImpactFlowNode>) {
       onClick={() => selectNode(id)}
     >
       <span className="impactNode__name">{data.name}</span>
-      <span className="impactNode__meta">
-        {data.kind} · depth {data.depth}
-      </span>
+      {zoom >= META_ZOOM ? (
+        <span className="impactNode__meta">
+          {data.kind} · depth {data.depth}
+        </span>
+      ) : null}
     </button>
   )
 }

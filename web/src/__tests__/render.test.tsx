@@ -15,7 +15,7 @@ import { AnswerCard } from '../components/AnswerCard'
 import { CypherPeek } from '../components/CypherPeek'
 import { FaithfulnessBadge } from '../components/FaithfulnessBadge'
 import { Landing } from '../components/Landing'
-import { LedgerFooter } from '../components/LedgerFooter'
+import { MessageLedger } from '../components/chat/MessageLedger'
 import { NoRecordCard } from '../components/NoRecordCard'
 import { OpenNodeProvider } from '../components/SourcePanel'
 import { ShowYourWork } from '../components/ShowYourWork'
@@ -28,7 +28,7 @@ function render(node: React.ReactElement): string {
 }
 
 describe('render smoke', () => {
-  it('renders the landing with scripted scenarios before free chat', () => {
+  it('renders the empty-thread hero with the scripted scenarios first', () => {
     const html = render(<Landing onAsk={noop} disabled={false} />)
     for (const label of [
       'Ask the corpus',
@@ -38,9 +38,10 @@ describe('render smoke', () => {
     ]) {
       expect(html).toContain(label)
     }
-    expect(html.indexOf('Ask the corpus')).toBeLessThan(
-      html.indexOf('landing__form'),
-    )
+    // The demo beat's opening line reads from the landing page.
+    expect(html).toContain('one question box.')
+    // The four scenario chips render as one group, before any free-chat affordance.
+    expect(html).toContain('landing__scenarios')
   })
 
   it('renders a cited answer with clickable chips', () => {
@@ -111,7 +112,7 @@ describe('render smoke', () => {
     expect(html).not.toContain('found no decision answering this')
   })
 
-  it('renders the ledger footer with run and deploy totals', () => {
+  it('renders the per-message ledger with its decision rows', () => {
     const ledger: LedgerSummary = {
       calls: 3,
       cost_usd: 0.0009,
@@ -138,16 +139,15 @@ describe('render smoke', () => {
         },
       ],
     }
-    const html = render(<LedgerFooter ledger={ledger} />)
-    expect(html).toContain('this run')
-    expect(html).toContain('deploy total')
+    const html = render(<MessageLedger ledger={ledger} defaultOpen />)
+    expect(html).toContain('ledger')
+    expect(html).toContain('3 decisions')
     expect(html).toContain('$0.0009')
-    expect(html).toContain('$0.0042')
     expect(html).toContain('small')
     expect(html).toContain('0.42')
     expect(html).toContain('321 ms')
-    expect(html).toContain('S2')
-    expect(html).toContain('S1')
+    expect(html).toContain('>S2<')
+    expect(html).toContain('>S1<')
   })
 
   it('renders CypherPeek collapsed and ShowYourWork with its tool count', () => {

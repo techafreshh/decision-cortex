@@ -21,6 +21,18 @@ export default defineConfig({
       '/healthz': apiTarget,
     },
   },
+  preview: {
+    proxy: {
+      '/ask': apiTarget,
+      '/node': apiTarget,
+      '/graph': apiTarget,
+      '/timeline': apiTarget,
+      '/exports': apiTarget,
+      '/faithfulness': apiTarget,
+      '/verification': apiTarget,
+      '/healthz': apiTarget,
+    },
+  },
   test: {
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}'],

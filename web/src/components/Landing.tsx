@@ -1,29 +1,21 @@
-import { useState, type FormEvent } from 'react'
-
 import { SCENARIOS, type AskRequest } from '../api/ask'
-import { Button } from './kit/Button'
 
 export interface LandingProps {
-  onAsk: (request: AskRequest) => void
+  onAsk: (request: AskRequest, text: string) => void
   disabled: boolean
 }
 
 /**
- * The landing view. The four scripted scenarios come first (AGENTS.md demo
- * beats: scripted buttons before free chat), then the free-chat box.
+ * The empty-thread hero. The four scripted scenarios come first (AGENTS.md
+ * demo beats: scripted buttons before free chat — same labels, same cache
+ * underneath); the free-chat box is the composer below them.
  */
 export function Landing({ onAsk, disabled }: LandingProps) {
-  const [question, setQuestion] = useState('')
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    const trimmed = question.trim()
-    if (trimmed === '') return
-    onAsk({ question: trimmed })
-  }
-
   return (
     <section className="landing">
+      <p className="landing__kicker">
+        <code>rust-lang/rfcs</code> · 2,309 decisions · 21k debate comments
+      </p>
       <h1 className="landing__title">
         600 decisions, 30k debate comments, one question box.
       </h1>
@@ -33,32 +25,18 @@ export function Landing({ onAsk, disabled }: LandingProps) {
       </p>
       <div className="landing__scenarios">
         {SCENARIOS.map((scenario) => (
-          <Button
+          <button
             key={scenario.key}
-            variant="primary"
+            type="button"
+            className="chip chip--suggest chip--suggest-lg"
             disabled={disabled}
-            onClick={() => onAsk({ scenario: scenario.key })}
+            onClick={() => onAsk({ scenario: scenario.key }, scenario.label)}
           >
-            {scenario.label}
-          </Button>
+            <span className="chip__label">{scenario.label}</span>
+          </button>
         ))}
       </div>
-      <form className="landing__form" onSubmit={submit}>
-        <input
-          className="landing__input"
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask the corpus…"
-          aria-label="Ask the corpus"
-        />
-        <Button
-          type="submit"
-          variant="ghost"
-          disabled={disabled || question.trim() === ''}
-        >
-          Ask
-        </Button>
-      </form>
+      <p className="landing__hint">…or ask anything below. Free chat is second; sources always first.</p>
     </section>
   )
 }

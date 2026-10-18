@@ -88,7 +88,13 @@ export function ImpactView() {
         </Button>
       </form>
 
-      {status === 'loading' ? <p className="muted">Walking the graph…</p> : null}
+      {status === 'loading' ? (
+        <div className="impactSkeleton" role="status">
+          <span className="skeletonCard__bar skeletonCard__bar--short" />
+          <span className="sr-only">Walking the graph…</span>
+          walking the graph…
+        </div>
+      ) : null}
       {status === 'missing' ? (
         <p className="muted">No graph node matches {seed}.</p>
       ) : null}
