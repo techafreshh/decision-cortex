@@ -72,7 +72,8 @@ their content is fully consolidated into the PRD and this file.)
   so a CopilotKit transport stays additive.
 - **Deployment:** Docker Compose (`falkordb` with volume + `api` + `web`) +
   Caddy HTTPS on the VPS; seed-on-boot; one-command local run
-  (`docker compose up --build` + `.env` with one OpenRouter key).
+  (`docker compose -f infra/docker-compose.yml up --build` + `infra/.env` with
+  one OpenRouter key).
 - **Corpus:** real rust-lang/rfcs data. No synthetic substitutions.
 
 ## Budget doctrine (hard cap: $10 OpenRouter per deploy)
@@ -159,8 +160,8 @@ ruff check .                  # lint (CI: ci.yml python job)
 pytest -q -m 'not integration and not live'   # offline unit tests
 scripts/run_scenario_api.sh <scratch_dir> <port>  # boot + readiness-probe /healthz
 npm --prefix web run build    # UI static bundle (web/ builds today)
-# planned, pending their phases:
-docker compose up --build     # full local brain (falkordb + api + web) — infra/ pending
+cp infra/.env.example infra/.env   # then set OPENROUTER_API_KEY
+docker compose -f infra/docker-compose.yml up -d --build   # full local brain (falkordb + api + web), seeds on boot
 # snapshot pull (Phase 0 only; needs vault GITHUB_TOKEN, rate-limit-safe)
 ```
 

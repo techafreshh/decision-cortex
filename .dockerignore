@@ -1,0 +1,14 @@
+# Keep the Docker build context small and free of local state.
+# `snapshot/`, `ingest/`, and `web/` are deliberately NOT excluded — the api
+# image needs the first two and the web image builds the third.
+.git
+.venv
+**/__pycache__
+**/*.pyc
+node_modules
+web/node_modules
+web/dist
+.snapshot-cache
+.pytest_cache
+.ruff_cache
+.zcode

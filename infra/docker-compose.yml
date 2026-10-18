@@ -1,0 +1,67 @@
+# Decision Cortex local brain: falkordb (graph) + api (FastAPI) + web (Caddy).
+#
+#   cp infra/.env.example infra/.env   # set OPENROUTER_API_KEY
+#   docker compose -f infra/docker-compose.yml up -d --build
+#
+# The api container seeds the graph from the committed snapshot on boot, so a
+# fresh volume comes up queryable with no separate step. FalkorDB has no host
+# port: the graph is reachable only by the api (and MCP), never mutated by the
+# browser.
+
+services:
+  falkordb:
+    image: falkordb/falkordb:6.0.2
+    volumes:
+      - falkordb-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    environment:
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: "6379"
+      FALKORDB_GRAPH: decision_cortex
+      SNAPSHOT_DIR: snapshot
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      SPEND_CAP_USD: ${SPEND_CAP_USD:-10}
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    # Seed before serving: `api.seed` skips an already-populated graph, so a
+    # restart reuses the volume instead of re-writing 28k nodes. uvicorn is
+    # exec'd so it owns the container's PID 1 and receives stop signals.
+    command:
+      - sh
+      - -c
+      - python -m api.seed && exec uvicorn api.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      # Generous: first boot compiles hnswlib in the build, then seeds 28k nodes.
+      start_period: 120s
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  falkordb-data:
