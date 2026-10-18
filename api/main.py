@@ -36,8 +36,8 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from api import evidence_text, faithfulness
-from api.answer import SCENARIOS, ask_events
+from api import evaluation, evidence_text, faithfulness, llm
+from api.answer import SCENARIOS, answer_question, ask_events
 from api.events import sse_encode
 from api.exports import ExportError, export_filename, render_graph, render_report
 from api.impact import IMPACT_MAX_DEPTH, build_impact
@@ -163,6 +163,54 @@ def faithfulness_score(request: FaithfulnessRequest) -> dict[str, Any]:
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return report.payload()
+
+
+@app.get("/verification")
+def verification() -> dict[str, Any]:
+    """The pinned 40-question set, exactly as authored (PRD §10)."""
+    try:
+        entries = evaluation.load_set()
+    except (OSError, ValueError) as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"verification set unavailable: {error}",
+        ) from error
+    gold = [entry.raw for entry in entries if entry.type == "gold"]
+    no_record = [entry.raw for entry in entries if entry.type == "no_record"]
+    return {
+        "gold": gold,
+        "no_record": no_record,
+        "counts": {"gold": len(gold), "no_record": len(no_record)},
+    }
+
+
+@app.post("/verification/run")
+def verification_run() -> dict[str, Any]:
+    """Execute the pinned set through the live pipeline (real OpenRouter calls).
+
+    Owner-dispatched: the eval-run workflow provides the spend-capped key.
+    Without a key this refuses with 503 so the offline path can never burn
+    budget; with one, the report carries the run's own ledger rows and cost.
+    """
+    try:
+        evaluation.require_key()
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    try:
+        entries = evaluation.load_set()
+    except (OSError, ValueError) as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"verification set unavailable: {error}",
+        ) from error
+    with llm.collect_ledger() as records:
+        result = evaluation.run_set(entries, answer_question)
+    payload = result.payload()
+    payload["calls"] = len(records)
+    payload["cost_usd"] = round(sum(record.cost_usd for record in records), 6)
+    payload["total_calls"] = len(llm.ledger_records())
+    payload["total_cost_usd"] = round(llm.ledger_total_cost_usd(), 6)
+    return payload
 
 
 @app.post("/ask")
