@@ -109,6 +109,62 @@ The graph stores **refs, never bodies** — `text_ref`/`content_ref` deep-link o
 to GitHub. Provenance honesty is structural: truncated comment harvests carry
 `truncated: true`, low-confidence stances are flagged, never dropped.
 
+## The graph, mapped
+
+**28,483 nodes · 34,642 edges** over the whole rust-lang/rfcs corpus:
+
+| Label / relation | Count | What it is |
+|---|---:|---|
+| `Decision` | 2,309 | every merged (1,130) / active / rejected RFC as a node |
+| `Message` | 21,623 | the debate: PR comments (first 100 per PR, `truncated` flag honest) |
+| `Commit` | 2,451 · `DocVersion` 642 | what shipped it, and the revision evidence |
+| `Person` 1,272 · `Team` 20 · `Area` 166 | participants and topic structure |
+| `PROPOSED_BY` / `ASSOCIATED_TEAM` / `AREA` / `HAS_VERSION` | 2,309 / 1,554 / 1,609 / 642 | decision metadata edges |
+| `EVIDENCED_BY {type}` | 25,821 | discussion · revision · implementation provenance |
+| `OBJECTED` / `SUPPORTED` / `MODERATED {evidence, confidence}` | 594 / 1,241 / 869 | S1-classified stances, every one jumpable to its comment |
+| `SUPERSEDES` | 3 | real supersession chains the Timeline renders |
+
+```mermaid
+graph LR
+    P["Person 1,272"] -- "PROPOSED_BY" --> D["Decision 2,309"]
+    T["Team 20"] -- "ASSOCIATED_TEAM" --> D
+    A["Area 166"] -- "AREA" --> D
+    D -- "EVIDENCED_BY {type}" --> M["Message 21,623"]
+    D -- "EVIDENCED_BY {revision}" --> V["DocVersion 642"]
+    D -- "EVIDENCED_BY {implementation}" --> C["Commit 2,451"]
+    P -- "OBJECTED / SUPPORTED / MODERATED {evidence, conf}" --> D
+    D -- "SUPERSEDES" --> D2["older Decision"]
+    D -- "HAS_VERSION" --> V
+```
+
+## The graph doing the work — an unedited production trace
+
+Captured from the live deployment answering *"Which RFC introduced the
+`async`/`await` syntax?"* (the stream in the UI renders this as the
+show-your-work strip and CypherPeek — the queries below are verbatim):
+
+```
+router_classify   -> {"route": "fact", "confidence": 0.99, "escalated": false}
+retrieve_evidence -> {"candidate_count": 54, "rounds": 1, "stopped_early": true}
+
+CALL db.idx.vector.queryNodes('Decision','embedding',$k,vecf32($vector)) …   ← vector seed
+CALL db.idx.fulltext.queryNodes('Decision',$q) …                             ← fulltext seed
+MATCH (d:Decision)-[r]->(n)  WHERE d.id IN $ids AND type(r) IN $rels …       ← multi-hop out
+MATCH (n)-[r]->(d:Decision)  WHERE d.id IN $ids AND type(r) IN $rels …       ← multi-hop in
+
+synthesize  -> RFC 2394 introduced the async/await syntax for ergonomic
+               asynchronous IO.                       [cited, 1/1 claims]
+claim_gate  -> sentence 1/1 cited -> chip: (rfc:2394, "async/await notation…")
+```
+
+Nothing here is keyword search dressed up: the question is *typed* by a model
+against the router's graph-shaped labels, the seeds come out of FalkorDB's
+vector and full-text indexes, evidence is *expanded across the schema's
+relations* (and the S1 sufficiency stop — `stopped_early: true` — is a
+decide() call that saved the second hop), the answer sentence is *gated*
+against the very node the chip opens, and abstention is what happens when any
+of that fails to ground.
+
 ## Verification set — the honesty backbone
 
 `verification/questions.jsonl` pins **30 gold questions** (each with its known
