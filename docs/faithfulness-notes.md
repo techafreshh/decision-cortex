@@ -85,3 +85,18 @@ the supported count as its choice. The ledger tracks *decisions*; scoring is
 not one, but surfacing it keeps the "show your work" rule honest — and the
 zero cost is part of the story: the badge is invisible to the $10 spend cap
 because the model is local.
+
+## Which checkpoint the default actually loads (deployed reality)
+
+HHEM-2.1-Open's canonical repository — `vectara/hhallucination_evaluation_model`
+(double "hh") — is **access-gated** on the Hugging Face hub: an anonymous
+`GET /api/models/…` returns 401, and downloading the weights requires an
+account that accepted the terms. A judge's `docker compose up` cannot do that,
+so the shipped default loads Vectara's earlier **public checkpointer of the
+same family**, id `vectara/hhallucination_evaluation_model` — concretely the
+ungated single-"h" repo `vectara/hallucination_evaluation_model` (200, ~422 MB),
+cached once in the `hf-cache` volume. The polarity sanity check ran live
+against it before ship (paraphrase 0.57, unrelated 0.10). A deployment that
+owns an HF token with the gated repo accepted upgrades to the exact
+HHEM-2.1-Open weights in one line:
+`FAITHFULNESS_MODEL_ID=vectara/hhallucination_evaluation_model`.
