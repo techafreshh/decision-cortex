@@ -166,12 +166,15 @@ abstention with receipts, Impact Explorer + Timeline + exports, claim gates,
 decision ledger + spend cap, local HHEM faithfulness, scripted scenarios with
 ≈$0 replay, offline CI (lint + 266 unit tests + compose smoke), seed-on-boot.
 
-Deliberately deferred (recorded, not hidden): stance edges ship behind
-`ingest.graph.build_payload(concepts=, stances=)` — deriving them corpus-wide
-needs a key-holding S1 batching pass; Timeline/Impact read them when they
-exist. `decision-embeddings.jsonl` needs one embedding-key run. The MCP
-read-peephole (`@falkordb/mcpserver`) is a stretch surface — the web app is
-the product.
+Deliberately deferred (recorded, not hidden): stance edges ship as a
+one-command build step — `OPENROUTER_API_KEY=<key> python -m ingest.stances`
+classifies the debate in cheap `decide()`-model batches under the same
+spend-cap ledger and writes `snapshot/stances.jsonl`; the idempotent seed
+re-load turns it into confidence-stamped, jumpable
+`OBJECTED|SUPPORTED|MODERATED` edges that Timeline and Impact already render.
+The committed embeddings artifact is likewise one key-holding command
+(`python -m ingest.embeddings`). The MCP read-peephole
+(`@falkordb/mcpserver`) is a stretch surface — the web app is the product.
 
 ## Bring your own corpus
 
