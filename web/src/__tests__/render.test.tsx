@@ -13,12 +13,13 @@ import { describe, expect, it } from 'vitest'
 
 import { AnswerCard } from '../components/AnswerCard'
 import { CypherPeek } from '../components/CypherPeek'
+import { FaithfulnessBadge } from '../components/FaithfulnessBadge'
 import { Landing } from '../components/Landing'
 import { LedgerFooter } from '../components/LedgerFooter'
 import { NoRecordCard } from '../components/NoRecordCard'
 import { OpenNodeProvider } from '../components/SourcePanel'
 import { ShowYourWork } from '../components/ShowYourWork'
-import type { LedgerSummary } from '../api/types'
+import type { FaithfulnessReport, LedgerSummary } from '../api/types'
 
 const noop = () => {}
 
@@ -161,5 +162,56 @@ describe('render smoke', () => {
       />,
     )
     expect(html).toContain('Show your work — 1 tool call')
+  })
+
+  it('renders every faithfulness badge state honestly', () => {
+    const report: FaithfulnessReport = {
+      faithfulness: 0.8571,
+      claims_total: 7,
+      claims_supported: 6,
+      claims_scored: 6,
+      claims_unresolved: 1,
+      threshold: 0.5,
+      model: 'faithfulness:hhem-2.1-open',
+      latency_ms: 4200,
+      claims: [],
+    }
+
+    // Pending: the async scoring phase, before the numbers land.
+    expect(
+      render(
+        <FaithfulnessBadge pending report={null} error={null} hasSentences />,
+      ),
+    ).toContain('scoring…')
+    // Landed: the real HHEM numbers.
+    const landed = render(
+      <FaithfulnessBadge pending report={report} error={null} hasSentences />,
+    )
+    expect(landed).toContain('faithfulness 0.86')
+    expect(landed).toContain('6/7 claims supported')
+    expect(landed).toContain('6 scored (HHEM)')
+    // Abstention: no claims to score — honest n/a, never a fake number.
+    expect(
+      render(
+        <FaithfulnessBadge pending report={null} error={null} hasSentences={false} />,
+      ),
+    ).toContain('n/a · abstention')
+    // Outage: no number, honest unavailability.
+    expect(
+      render(
+        <FaithfulnessBadge pending report={null} error="503" hasSentences />,
+      ),
+    ).toContain('faithfulness unavailable')
+    // No pending event: nothing renders at all.
+    expect(
+      render(
+        <FaithfulnessBadge
+          pending={false}
+          report={null}
+          error={null}
+          hasSentences={false}
+        />,
+      ),
+    ).toBe('')
   })
 })
