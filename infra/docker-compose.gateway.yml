@@ -1,0 +1,24 @@
+# Gateway-fronted deployment override for Decision Cortex.
+#
+#   cp infra/.env.example infra/.env        # set OPENROUTER_API_KEY
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.gateway.yml \
+#     up -d --build
+#
+# The host's central Caddy gateway (~/caddy-gateway, ports 80/443) terminates
+# TLS and reaches the stack over the external `web_gateway` docker network; no
+# port is published to the host. The site block lives in the gateway's
+# Caddyfile: `reverse_proxy decision-cortex:80`. Override GATEWAY_NETWORK /
+# GATEWAY_ALIAS if your gateway names them differently.
+
+services:
+  web:
+    ports: !reset []
+    networks:
+      default: {}
+      gateway:
+        aliases: ["${GATEWAY_ALIAS:-decision-cortex}"]
+
+networks:
+  gateway:
+    name: ${GATEWAY_NETWORK:-web_gateway}
+    external: true
